@@ -1,0 +1,33 @@
+# 環境変数・機密情報
+.env
+.env.local
+.env.*.local
+
+# 素材ドキュメント・仕様書（VPS上のみ保管）
+docs/
+data/*
+!data/.gitkeep
+
+# Pythonキャッシュ
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+venv/
+.venv/
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
