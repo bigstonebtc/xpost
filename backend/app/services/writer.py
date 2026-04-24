@@ -42,7 +42,8 @@ def generate_tweets(past_tweets: list[str]) -> list[str]:
 
     source_section = f"\n【参考資料】\n{source}" if source else ""
 
-    user_message = f"以下の条件でツイートを10件生成してください。{past_section}{source_section}"
+    user_message = f"""以下の条件でツイートを10件生成してください。
+内訳：AIの知識だけを使って生成するものを5件、参考資料をインプットして生成するものを5件。{past_section}{source_section}"""
 
     message = client.messages.create(
         model="claude-opus-4-7",
