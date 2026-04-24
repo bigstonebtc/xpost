@@ -7,6 +7,8 @@
 docs/
 data/*
 !data/.gitkeep
+tweetsource/*
+!tweetsource/.gitkeep
 
 # Pythonキャッシュ
 __pycache__/

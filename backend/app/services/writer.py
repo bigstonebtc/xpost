@@ -7,6 +7,7 @@ from app.config import settings
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 DATA_DIR = Path("/app/data")
+TWEETSOURCE_DIR = Path("/app/tweetsource")
 SYSTEM_PROMPT_FILE = DATA_DIR / "system_prompt.txt"
 
 SYSTEM_PROMPT_FALLBACK = """必ずJSON配列で10件のツイートを返してください。
@@ -21,9 +22,12 @@ def _load_system_prompt() -> str:
 
 def _load_source_material() -> str:
     texts = []
-    for f in DATA_DIR.glob("*.txt"):
-        if f.name != "system_prompt.txt":
-            texts.append(f.read_text(encoding="utf-8"))
+    for f in sorted(TWEETSOURCE_DIR.glob("*")):
+        if f.is_file():
+            try:
+                texts.append(f.read_text(encoding="utf-8"))
+            except Exception:
+                pass
     return "\n\n---\n\n".join(texts) if texts else ""
 
 
