@@ -1,3 +1,4 @@
+import traceback
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timezone
 
@@ -13,15 +14,23 @@ def _execute_post(tweet_id: int):
     db = SessionLocal()
     try:
         tweet = db.query(Tweet).filter(Tweet.id == tweet_id).first()
-        if not tweet or tweet.status != TweetStatus.scheduled:
+        if not tweet:
+            print(f"[scheduler] tweet_id={tweet_id} が見つかりません")
             return
+        if tweet.status != TweetStatus.scheduled:
+            print(f"[scheduler] tweet_id={tweet_id} のステータスが scheduled ではありません: {tweet.status}")
+            return
+        print(f"[scheduler] tweet_id={tweet_id} を投稿中...")
         x_id = post_tweet(tweet.content)
         tweet.status = TweetStatus.posted
         tweet.posted_at = datetime.now(timezone.utc)
         tweet.x_tweet_id = x_id
         db.commit()
+        print(f"[scheduler] tweet_id={tweet_id} 投稿完了 x_id={x_id}")
     except Exception as e:
-        print(f"投稿エラー tweet_id={tweet_id}: {e}")
+        print(f"[scheduler] 投稿エラー tweet_id={tweet_id}: {e}")
+        traceback.print_exc()
+        db.rollback()
     finally:
         db.close()
 
