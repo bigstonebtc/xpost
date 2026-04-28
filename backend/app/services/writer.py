@@ -40,16 +40,31 @@ def generate_tweets(past_tweets: list[str]) -> list[str]:
         samples = random.sample(past_tweets, min(20, len(past_tweets)))
         past_section = "\n【過去の投稿（これらと表現が被らないようにすること）】\n" + "\n".join(f"- {t}" for t in samples)
 
-    source_section = f"\n【参考資料】\n{source}" if source else ""
+    # システムプロンプトをキャッシュ（安定コンテンツ）
+    system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
 
-    user_message = f"""以下の条件でツイートを10件生成してください。
-内訳：AIの知識だけを使って生成するものを5件、参考資料をインプットして生成するものを5件。{past_section}{source_section}"""
+    # ユーザーメッセージ: 安定部分（参考資料）はキャッシュ、変動部分（過去ツイート＋指示）はキャッシュしない
+    content = []
+    if source:
+        content.append({
+            "type": "text",
+            "text": f"【参考資料】\n{source}",
+            "cache_control": {"type": "ephemeral"},
+        })
+
+    content.append({
+        "type": "text",
+        "text": (
+            "以下の条件でツイートを10件生成してください。\n"
+            f"内訳：AIの知識だけを使って生成するものを5件、参考資料をインプットして生成するものを5件。{past_section}"
+        ),
+    })
 
     message = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+        system=system,
+        messages=[{"role": "user", "content": content}],
     )
 
     text = message.content[0].text.strip()
