@@ -54,10 +54,7 @@ def generate_tweets(past_tweets: list[str]) -> list[str]:
 
     content.append({
         "type": "text",
-        "text": (
-            "以下の条件でツイートを10件生成してください。\n"
-            f"内訳：AIの知識だけを使って生成するものを5件、参考資料をインプットして生成するものを5件。{past_section}"
-        ),
+        "text": past_section if past_section else "ツイートを生成してください。",
     })
 
     message = client.messages.create(
