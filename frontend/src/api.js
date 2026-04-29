@@ -42,10 +42,11 @@ export const api = {
   queue: () => request('GET', '/queue/'),
   generate: () => request('POST', '/tweets/generate'),
   post: (id) => request('POST', `/queue/${id}/post`),
+  schedule: (id) => request('POST', `/queue/${id}/schedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
   edit: (id, content) => request('PUT', `/queue/${id}`, { content }),
   clearQueue: () => request('DELETE', '/queue/'),
-  history: () => request('GET', '/history/'),
+  history: (filter = 'today') => request('GET', `/history/?filter=${filter}`),
   // ニュース
   newsList: () => request('GET', '/news/'),
   newsFetch: () => request('POST', '/news/fetch'),
@@ -54,8 +55,8 @@ export const api = {
   newsRegenerate: (id) => request('POST', `/news/${id}/regenerate`),
   // ニュース設定
   newsSettings: () => request('GET', '/settings/news/'),
-  newsUpdateSource: (id, is_enabled) => request('PUT', `/settings/news/sources/${id}`, { is_enabled }),
+  newsUpdateSource: (id, is_enabled, url) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url }),
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
-  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt) =>
-    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt }),
+  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, schedule_mode) =>
+    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, schedule_mode }),
 }

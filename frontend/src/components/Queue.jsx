@@ -37,6 +37,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     finally { setLoading(false) }
   }
 
+  const handleSchedule = async () => {
+    setLoading(true)
+    try { await api.schedule(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
   const handleDiscard = async () => {
     setLoading(true)
     try { await api.discard(tweet.id); onRefresh() }
@@ -90,7 +97,8 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             </>
           ) : (
             <div style={s.btnRow}>
-              <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>post</button>
+              <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>今すぐ投稿</button>
+              <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
               <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
               <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
             </div>
