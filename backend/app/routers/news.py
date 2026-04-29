@@ -26,6 +26,17 @@ def list_news(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return result
 
 
+@router.post("/clear-ai-skipped")
+def clear_ai_skipped(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """AI判定NGの記事を削除 → 次回取得時に再判定される"""
+    deleted = db.query(NewsItem).filter(
+        NewsItem.status == "skipped",
+        NewsItem.ai_relevant == False,
+    ).delete()
+    db.commit()
+    return {"deleted": deleted}
+
+
 @router.post("/fetch")
 def fetch_news(background_tasks: BackgroundTasks, _=Depends(get_current_user)):
     from app.services.news_fetcher import fetch_and_process

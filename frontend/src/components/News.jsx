@@ -106,6 +106,16 @@ export default function News() {
     }
   }
 
+  const handleClearAiSkipped = async () => {
+    if (!window.confirm('AI判定でNGとなった記事をDBから削除します。次回取得時に再判定されます。続けますか？')) return
+    try {
+      const res = await api.newsClearAiSkipped()
+      setErr(`${res.deleted}件のAI却下記事を削除しました。「今すぐ取得」を押してください。`)
+    } catch (e) {
+      setErr(e.message)
+    }
+  }
+
   const handleDebug = async () => {
     setDebugging(true)
     setDebugInfo(null)
@@ -171,6 +181,9 @@ export default function News() {
         {fetching && <button style={styles.debugBtn} onClick={load}>手動リロード</button>}
         <button style={styles.debugBtn} onClick={handleDebug} disabled={debugging}>
           {debugging ? '診断中...' : 'RSS診断'}
+        </button>
+        <button style={{ ...styles.debugBtn, color: '#e53e3e', borderColor: '#e53e3e' }} onClick={handleClearAiSkipped}>
+          AI却下リセット
         </button>
         <span style={styles.nextFetch}>未確認: {items.length}件</span>
       </div>
