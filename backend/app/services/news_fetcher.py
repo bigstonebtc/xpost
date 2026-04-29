@@ -1,3 +1,4 @@
+import math
 import time
 import json
 import traceback
@@ -11,6 +12,14 @@ import anthropic
 from app.config import settings
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+DEFAULT_PROMPT = (
+    "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
+    "投稿素材として関連性があるか判定してください。\n\n"
+    "タイトル：{title}\n"
+    "概要：{summary}\n\n"
+    '以下のJSONのみ返答：\n{"relevant": true/false}'
+)
 
 
 class _HTMLStripper(HTMLParser):
@@ -42,24 +51,8 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
     return (now - published_at) < timedelta(hours=48)
 
 
-def _keyword_filter(title: str, summary: str, include_kws: list[str], exclude_kws: list[str]) -> bool:
-    text = (title + " " + (summary or "")).lower()
-    for kw in exclude_kws:
-        if kw.lower() in text:
-            return False
-    if not include_kws:
-        return True
-    return any(kw.lower() in text for kw in include_kws)
-
-
-def _ai_relevance_check(title: str, summary: str) -> bool:
-    prompt = (
-        "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
-        "投稿素材として関連性があるか判定してください。\n\n"
-        f"タイトル：{title}\n"
-        f"概要：{summary or '（概要なし）'}\n\n"
-        '以下のJSONのみ返答：\n{"relevant": true/false}'
-    )
+def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
+    prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -76,17 +69,24 @@ def _ai_relevance_check(title: str, summary: str) -> bool:
 
 def fetch_and_process() -> dict:
     from app.database import SessionLocal
-    from app.models.news import NewsSource, NewsKeyword, NewsItem
+    from app.models.news import NewsSource, NewsSettings, NewsItem
     from app.services.writer import generate_tweet_from_news
 
     db = SessionLocal()
     try:
         sources = db.query(NewsSource).filter(NewsSource.is_enabled == True).all()
-        include_kws = [kw.keyword for kw in db.query(NewsKeyword).filter(NewsKeyword.type == "include").all()]
-        exclude_kws = [kw.keyword for kw in db.query(NewsKeyword).filter(NewsKeyword.type == "exclude").all()]
+        if not sources:
+            return {"fetched": 0, "skipped_old": 0, "skipped_duplicate": 0,
+                    "skipped_ai": 0, "added_pending": 0}
+
+        ns = db.query(NewsSettings).first()
+        total_limit = ns.fetch_limit_per_run if ns else 20
+        prompt_template = ns.relevance_prompt if ns else DEFAULT_PROMPT
+
+        limit_per_source = math.ceil(total_limit / len(sources))
 
         stats = {"fetched": 0, "skipped_old": 0, "skipped_duplicate": 0,
-                 "skipped_keyword": 0, "skipped_ai": 0, "added_pending": 0}
+                 "skipped_ai": 0, "added_pending": 0}
 
         for source in sources:
             try:
@@ -95,7 +95,11 @@ def fetch_and_process() -> dict:
                 print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
                 continue
 
+            count_this_source = 0
             for entry in feed.entries:
+                if count_this_source >= limit_per_source:
+                    break
+
                 title = _strip_html(entry.get("title", ""))
                 url = entry.get("link", "")
                 summary = _strip_html(entry.get("summary", "") or entry.get("description", ""))
@@ -114,17 +118,14 @@ def fetch_and_process() -> dict:
                     continue
 
                 stats["fetched"] += 1
+                count_this_source += 1
 
                 existing = db.query(NewsItem).filter(NewsItem.url == url).first()
                 if existing:
                     stats["skipped_duplicate"] += 1
                     continue
 
-                if not _keyword_filter(title, summary, include_kws, exclude_kws):
-                    stats["skipped_keyword"] += 1
-                    continue
-
-                ai_relevant = _ai_relevance_check(title, summary)
+                ai_relevant = _ai_relevance_check(title, summary, prompt_template)
 
                 if not ai_relevant:
                     stats["skipped_ai"] += 1

@@ -24,13 +24,13 @@ class FetchSchedule(Base):
     is_enabled = Column(Boolean, default=True)
 
 
-class NewsKeyword(Base):
-    __tablename__ = "news_keywords"
+class NewsSettings(Base):
+    __tablename__ = "news_settings"
 
     id = Column(Integer, primary_key=True, index=True)
-    keyword = Column(String(100), nullable=False)
-    type = Column(String(10), nullable=False)  # 'include' or 'exclude'
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    fetch_limit_per_run = Column(Integer, default=20)
+    relevance_prompt = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class NewsItem(Base):

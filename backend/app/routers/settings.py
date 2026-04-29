@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.news import NewsSource, FetchSchedule, NewsKeyword
+from app.models.news import NewsSource, FetchSchedule, NewsSettings
 
 router = APIRouter(prefix="/settings/news", tags=["settings"])
 
@@ -22,20 +22,20 @@ class ScheduleUpdate(BaseModel):
     slots: list[ScheduleSlot]
 
 
-class KeywordCreate(BaseModel):
-    keyword: str
-    type: str  # 'include' or 'exclude'
+class GeneralUpdate(BaseModel):
+    fetch_limit_per_run: int
+    relevance_prompt: str
 
 
 @router.get("/")
 def get_news_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
     sources = db.query(NewsSource).order_by(NewsSource.id).all()
     schedules = db.query(FetchSchedule).order_by(FetchSchedule.slot_number).all()
-    keywords = db.query(NewsKeyword).order_by(NewsKeyword.type, NewsKeyword.id).all()
+    ns = db.query(NewsSettings).first()
     return {
         "sources": sources,
         "schedules": schedules,
-        "keywords": keywords,
+        "general": ns,
     }
 
 
@@ -64,22 +64,17 @@ def update_schedule(body: ScheduleUpdate, db: Session = Depends(get_db), _=Depen
     return {"ok": True}
 
 
-@router.post("/keywords")
-def add_keyword(body: KeywordCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    if body.type not in ("include", "exclude"):
-        raise HTTPException(status_code=400, detail="type は include または exclude")
-    kw = NewsKeyword(keyword=body.keyword.strip(), type=body.type)
-    db.add(kw)
-    db.commit()
-    db.refresh(kw)
-    return kw
+@router.put("/general")
+def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    if "{title}" not in body.relevance_prompt or "{summary}" not in body.relevance_prompt:
+        raise HTTPException(status_code=400, detail="{title} と {summary} のプレースホルダーが必要です")
+    if body.fetch_limit_per_run not in (20, 50, 100):
+        raise HTTPException(status_code=400, detail="取得件数上限は 20 / 50 / 100 から選択してください")
 
-
-@router.delete("/keywords/{keyword_id}")
-def delete_keyword(keyword_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    kw = db.query(NewsKeyword).filter(NewsKeyword.id == keyword_id).first()
-    if not kw:
-        raise HTTPException(status_code=404, detail="キーワードが見つかりません")
-    db.delete(kw)
+    ns = db.query(NewsSettings).first()
+    if not ns:
+        raise HTTPException(status_code=404, detail="設定が見つかりません")
+    ns.fetch_limit_per_run = body.fetch_limit_per_run
+    ns.relevance_prompt = body.relevance_prompt
     db.commit()
     return {"ok": True}

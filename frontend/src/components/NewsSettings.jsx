@@ -10,42 +10,37 @@ const styles = {
   toggle: { cursor: 'pointer' },
   saveBtn: { marginTop: '14px', padding: '8px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
   slotRow: { display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 0', borderBottom: '1px solid #f0f0f0' },
-  slotLabel: { fontSize: '14px', width: '60px' },
+  slotLabel: { fontSize: '14px', width: '70px' },
   select: { padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px' },
-  tagArea: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' },
-  tag: { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '16px', fontSize: '13px' },
-  tagInclude: { background: '#e8f4fd', color: '#0d6efd' },
-  tagExclude: { background: '#fde8e8', color: '#dc3545' },
-  tagDelete: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: '0 2px' },
-  addRow: { display: 'flex', gap: '8px', marginTop: '6px' },
-  input: { flex: 1, padding: '6px 10px', border: '1px solid #ccc', borderRadius: '5px', fontSize: '14px' },
-  addBtn: { padding: '6px 14px', background: '#fff', border: '1px solid #ccc', borderRadius: '5px', cursor: 'pointer', fontSize: '13px' },
-  typeToggle: { display: 'flex', border: '1px solid #ccc', borderRadius: '5px', overflow: 'hidden' },
-  typeBtn: { padding: '6px 12px', border: 'none', cursor: 'pointer', fontSize: '13px' },
-  typeBtnActive: { background: '#1a1a2e', color: '#fff' },
-  typeBtnInactive: { background: '#fff', color: '#333' },
+  limitRow: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid #f0f0f0', marginBottom: '4px' },
+  limitLabel: { fontSize: '14px', flex: 1 },
+  promptArea: { width: '100%', minHeight: '200px', padding: '10px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '13px', fontFamily: 'monospace', lineHeight: '1.6', resize: 'vertical', boxSizing: 'border-box' },
+  promptHint: { fontSize: '12px', color: '#888', marginTop: '6px' },
   errMsg: { color: '#dc3545', fontSize: '13px', marginTop: '8px' },
   successMsg: { color: '#198754', fontSize: '13px', marginTop: '8px' },
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
+const LIMIT_OPTIONS = [20, 50, 100]
 
 export default function NewsSettings() {
   const [sources, setSources] = useState([])
   const [schedules, setSchedules] = useState([])
-  const [keywords, setKeywords] = useState([])
+  const [fetchLimit, setFetchLimit] = useState(20)
+  const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
-  const [newKw, setNewKw] = useState('')
-  const [newKwType, setNewKwType] = useState('include')
 
   const load = useCallback(async () => {
     try {
       const data = await api.newsSettings()
       setSources(data.sources)
       setSchedules(data.schedules)
-      setKeywords(data.keywords)
+      if (data.general) {
+        setFetchLimit(data.general.fetch_limit_per_run)
+        setPrompt(data.general.relevance_prompt)
+      }
     } catch (e) {
       setMsg({ type: 'err', text: e.message })
     } finally {
@@ -88,7 +83,7 @@ export default function NewsSettings() {
         hour: Number(s.hour),
         is_enabled: s.is_enabled,
       })))
-      flash('ok', 'スケジュールを保存しました')
+      flash('ok', 'スケジュール・件数設定を保存しました')
     } catch (e) {
       flash('err', e.message)
     } finally {
@@ -96,31 +91,23 @@ export default function NewsSettings() {
     }
   }
 
-  const addKeyword = async () => {
-    const kw = newKw.trim()
-    if (!kw) return
-    try {
-      const added = await api.newsAddKeyword(kw, newKwType)
-      setKeywords(prev => [...prev, added])
-      setNewKw('')
-    } catch (e) {
-      flash('err', e.message)
+  const saveGeneral = async () => {
+    if (!prompt.includes('{title}') || !prompt.includes('{summary}')) {
+      flash('err', '{title} と {summary} のプレースホルダーが必要です')
+      return
     }
-  }
-
-  const deleteKeyword = async (id) => {
+    setSaving(true)
     try {
-      await api.newsDeleteKeyword(id)
-      setKeywords(prev => prev.filter(k => k.id !== id))
+      await api.newsUpdateGeneral(fetchLimit, prompt)
+      flash('ok', '保存しました ✓')
     } catch (e) {
       flash('err', e.message)
+    } finally {
+      setSaving(false)
     }
   }
 
   if (loading) return <p style={{ color: '#888', textAlign: 'center', marginTop: '40px' }}>読み込み中...</p>
-
-  const includeKws = keywords.filter(k => k.type === 'include')
-  const excludeKws = keywords.filter(k => k.type === 'exclude')
 
   return (
     <div>
@@ -128,7 +115,7 @@ export default function NewsSettings() {
         <p style={msg.type === 'ok' ? styles.successMsg : styles.errMsg}>{msg.text}</p>
       )}
 
-      {/* RSSソース */}
+      {/* セクション1: RSSソース */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>RSSソース</div>
         {sources.map(s => (
@@ -149,9 +136,17 @@ export default function NewsSettings() {
         <button style={styles.saveBtn} onClick={saveSources} disabled={saving}>保存</button>
       </div>
 
-      {/* 取得スケジュール */}
+      {/* セクション2: スケジュール・件数 */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle}>取得スケジュール</div>
+        <div style={styles.sectionTitle}>取得スケジュール・件数</div>
+
+        <div style={styles.limitRow}>
+          <span style={styles.limitLabel}>1回あたりの取得件数上限</span>
+          <select style={styles.select} value={fetchLimit} onChange={e => setFetchLimit(Number(e.target.value))}>
+            {LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n}件</option>)}
+          </select>
+        </div>
+
         {schedules.map(slot => (
           <div key={slot.slot_number} style={styles.slotRow}>
             <span style={styles.slotLabel}>スロット{slot.slot_number}</span>
@@ -177,57 +172,19 @@ export default function NewsSettings() {
         <button style={styles.saveBtn} onClick={saveSchedule} disabled={saving}>保存</button>
       </div>
 
-      {/* キーワードフィルタリング */}
+      {/* セクション3: AI関連度判定プロンプト */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle}>キーワードフィルタリング</div>
-
-        <div style={{ marginBottom: '16px' }}>
-          <div style={{ fontSize: '13px', color: '#555', marginBottom: '6px' }}>取得キーワード（OR条件）</div>
-          <div style={styles.tagArea}>
-            {includeKws.map(k => (
-              <span key={k.id} style={{ ...styles.tag, ...styles.tagInclude }}>
-                {k.keyword}
-                <button style={styles.tagDelete} onClick={() => deleteKeyword(k.id)}>×</button>
-              </span>
-            ))}
-            {includeKws.length === 0 && <span style={{ color: '#aaa', fontSize: '13px' }}>なし</span>}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '16px' }}>
-          <div style={{ fontSize: '13px', color: '#555', marginBottom: '6px' }}>除外キーワード</div>
-          <div style={styles.tagArea}>
-            {excludeKws.map(k => (
-              <span key={k.id} style={{ ...styles.tag, ...styles.tagExclude }}>
-                {k.keyword}
-                <button style={styles.tagDelete} onClick={() => deleteKeyword(k.id)}>×</button>
-              </span>
-            ))}
-            {excludeKws.length === 0 && <span style={{ color: '#aaa', fontSize: '13px' }}>なし</span>}
-          </div>
-        </div>
-
-        <div style={styles.addRow}>
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="キーワードを追加..."
-            value={newKw}
-            onChange={e => setNewKw(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addKeyword()}
-          />
-          <div style={styles.typeToggle}>
-            <button
-              style={{ ...styles.typeBtn, ...(newKwType === 'include' ? styles.typeBtnActive : styles.typeBtnInactive) }}
-              onClick={() => setNewKwType('include')}
-            >取得</button>
-            <button
-              style={{ ...styles.typeBtn, ...(newKwType === 'exclude' ? styles.typeBtnActive : styles.typeBtnInactive) }}
-              onClick={() => setNewKwType('exclude')}
-            >除外</button>
-          </div>
-          <button style={styles.addBtn} onClick={addKeyword}>追加</button>
-        </div>
+        <div style={styles.sectionTitle}>AI関連度判定プロンプト</div>
+        <textarea
+          style={styles.promptArea}
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          spellCheck={false}
+        />
+        <p style={styles.promptHint}>
+          ※ {'{title}'} {'{summary}'} はシステムが自動で置換します。この2つのプレースホルダーは必ず残してください。
+        </p>
+        <button style={styles.saveBtn} onClick={saveGeneral} disabled={saving}>保存</button>
       </div>
     </div>
   )

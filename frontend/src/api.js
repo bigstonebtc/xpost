@@ -56,6 +56,6 @@ export const api = {
   newsSettings: () => request('GET', '/settings/news/'),
   newsUpdateSource: (id, is_enabled) => request('PUT', `/settings/news/sources/${id}`, { is_enabled }),
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
-  newsAddKeyword: (keyword, type) => request('POST', '/settings/news/keywords', { keyword, type }),
-  newsDeleteKeyword: (id) => request('DELETE', `/settings/news/keywords/${id}`),
+  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt) =>
+    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt }),
 }
