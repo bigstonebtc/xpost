@@ -53,6 +53,7 @@ export const api = {
   newsAddToQueue: (id) => request('POST', `/news/${id}/add-to-queue`),
   newsSkip: (id) => request('POST', `/news/${id}/skip`),
   newsRegenerate: (id) => request('POST', `/news/${id}/regenerate`),
+  newsDebug: () => request('GET', '/news/debug'),
   // ニュース設定
   newsSettings: () => request('GET', '/settings/news/'),
   newsUpdateSource: (id, is_enabled, url) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url }),

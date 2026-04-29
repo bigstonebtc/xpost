@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api'
 
 const styles = {
-  topBar: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' },
+  topBar: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' },
   fetchBtn: { padding: '8px 16px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
+  debugBtn: { padding: '8px 14px', background: '#fff', color: '#555', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
   nextFetch: { fontSize: '13px', color: '#666' },
+  debugBox: { background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '6px', padding: '12px', marginBottom: '16px', fontSize: '12px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '300px', overflowY: 'auto' },
   card: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '16px' },
   cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' },
   cardTitle: { fontWeight: 'bold', fontSize: '15px', flex: 1, marginRight: '8px', lineHeight: '1.4' },
@@ -44,12 +46,36 @@ function CharCounter({ text }) {
   )
 }
 
+function formatDebugInfo(info) {
+  const lines = []
+  lines.push(`=== DB統計 ===`)
+  const s = info.db_stats
+  lines.push(`pending: ${s.pending}件  AI却下: ${s.skipped_ai}件  キュー済: ${s.queued}件  合計: ${s.total}件`)
+  lines.push('')
+  lines.push('=== RSSソース ===')
+  for (const src of info.sources) {
+    if (src.error) {
+      lines.push(`[エラー] ${src.name}: ${src.error}`)
+    } else {
+      lines.push(`[OK] ${src.name} — 合計${src.total_entries}件 / 48h以内${src.recent_entries}件`)
+      for (const t of src.sample_titles) {
+        const age = t.age_hours != null ? `${t.age_hours}h` : '不明'
+        const flag = t.recent ? '✓' : '古い'
+        lines.push(`  ${flag} (${age}) ${t.title}`)
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
 export default function News() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [loadingIds, setLoadingIds] = useState({})
   const [err, setErr] = useState('')
+  const [debugInfo, setDebugInfo] = useState(null)
+  const [debugging, setDebugging] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +103,19 @@ export default function News() {
     } catch (e) {
       setErr(e.message)
       setFetching(false)
+    }
+  }
+
+  const handleDebug = async () => {
+    setDebugging(true)
+    setDebugInfo(null)
+    try {
+      const res = await api.newsDebug()
+      setDebugInfo(res)
+    } catch (e) {
+      setDebugInfo({ error: e.message })
+    } finally {
+      setDebugging(false)
     }
   }
 
@@ -129,8 +168,21 @@ export default function News() {
         <button style={styles.fetchBtn} onClick={handleFetch} disabled={fetching}>
           {fetching ? 'バックグラウンド取得中...' : '今すぐ取得'}
         </button>
+        {fetching && <button style={styles.debugBtn} onClick={load}>手動リロード</button>}
+        <button style={styles.debugBtn} onClick={handleDebug} disabled={debugging}>
+          {debugging ? '診断中...' : 'RSS診断'}
+        </button>
         <span style={styles.nextFetch}>未確認: {items.length}件</span>
       </div>
+
+      {debugInfo && (
+        <div style={styles.debugBox}>
+          {debugInfo.error
+            ? `エラー: ${debugInfo.error}`
+            : formatDebugInfo(debugInfo)
+          }
+        </div>
+      )}
 
       {err && <p style={styles.errMsg}>{err}</p>}
 

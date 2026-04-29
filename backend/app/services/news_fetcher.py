@@ -123,13 +123,13 @@ def fetch_and_process() -> dict:
                     stats["skipped_old"] += 1
                     continue
 
-                stats["fetched"] += 1
-                count_this_source += 1
-
                 existing = db.query(NewsItem).filter(NewsItem.url == url).first()
                 if existing:
                     stats["skipped_duplicate"] += 1
                     continue
+
+                stats["fetched"] += 1
+                count_this_source += 1
 
                 ai_relevant = _ai_relevance_check(title, summary, prompt_template)
 

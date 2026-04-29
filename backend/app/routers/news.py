@@ -33,6 +33,69 @@ def fetch_news(background_tasks: BackgroundTasks, _=Depends(get_current_user)):
     return {"message": "取得を開始しました"}
 
 
+@router.get("/debug")
+def fetch_debug(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """RSS到達確認・DB統計（AI判定なし）"""
+    import socket
+    import time as _time
+    import feedparser
+    from datetime import datetime, timezone, timedelta
+    from app.models.news import NewsSource
+
+    sources = db.query(NewsSource).filter(NewsSource.is_enabled == True).all()
+    now = datetime.now(timezone.utc)
+    source_results = []
+
+    for source in sources:
+        info = {
+            "name": source.name,
+            "url": source.url,
+            "total_entries": 0,
+            "recent_entries": 0,
+            "sample_titles": [],
+            "error": None,
+        }
+        try:
+            old = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(15)
+            try:
+                feed = feedparser.parse(source.url)
+            finally:
+                socket.setdefaulttimeout(old)
+
+            info["total_entries"] = len(feed.entries)
+            for entry in feed.entries[:5]:
+                published_at = None
+                if getattr(entry, "published_parsed", None):
+                    published_at = datetime.fromtimestamp(
+                        _time.mktime(entry.published_parsed), tz=timezone.utc
+                    )
+                age_h = round((now - published_at).total_seconds() / 3600, 1) if published_at else None
+                recent = (age_h is None or age_h < 48)
+                if recent:
+                    info["recent_entries"] += 1
+                info["sample_titles"].append({
+                    "title": entry.get("title", "")[:60],
+                    "age_hours": age_h,
+                    "recent": recent,
+                })
+        except Exception as e:
+            info["error"] = str(e)
+
+        source_results.append(info)
+
+    # DBの統計
+    from app.models.news import NewsItem
+    db_stats = {
+        "pending": db.query(NewsItem).filter(NewsItem.status == "pending").count(),
+        "skipped_ai": db.query(NewsItem).filter(NewsItem.status == "skipped", NewsItem.ai_relevant == False).count(),
+        "queued": db.query(NewsItem).filter(NewsItem.status == "queued").count(),
+        "total": db.query(NewsItem).count(),
+    }
+
+    return {"sources": source_results, "db_stats": db_stats}
+
+
 @router.post("/{item_id}/add-to-queue")
 def add_to_queue(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     item = db.query(NewsItem).filter(NewsItem.id == item_id, NewsItem.status == "pending").first()
