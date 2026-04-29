@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -27,10 +27,10 @@ def list_news(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 
 @router.post("/fetch")
-def fetch_news(_=Depends(get_current_user)):
+def fetch_news(background_tasks: BackgroundTasks, _=Depends(get_current_user)):
     from app.services.news_fetcher import fetch_and_process
-    stats = fetch_and_process()
-    return stats
+    background_tasks.add_task(fetch_and_process)
+    return {"message": "取得を開始しました"}
 
 
 @router.post("/{item_id}/add-to-queue")

@@ -68,12 +68,14 @@ export default function News() {
     setFetching(true)
     setErr('')
     try {
-      const stats = await api.newsFetch()
-      await load()
-      if (stats.added_pending === 0) setErr(`取得完了。新規記事なし（取得: ${stats.fetched}件）`)
+      await api.newsFetch()
+      // バックグラウンド処理のため30秒後に自動リロード
+      setTimeout(async () => {
+        await load()
+        setFetching(false)
+      }, 30000)
     } catch (e) {
       setErr(e.message)
-    } finally {
       setFetching(false)
     }
   }
@@ -125,7 +127,7 @@ export default function News() {
     <div>
       <div style={styles.topBar}>
         <button style={styles.fetchBtn} onClick={handleFetch} disabled={fetching}>
-          {fetching ? '取得中...' : '今すぐ取得'}
+          {fetching ? 'バックグラウンド取得中...' : '今すぐ取得'}
         </button>
         <span style={styles.nextFetch}>未確認: {items.length}件</span>
       </div>

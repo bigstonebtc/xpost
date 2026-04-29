@@ -1,6 +1,7 @@
 import math
 import time
 import json
+import socket
 import traceback
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
@@ -11,7 +12,7 @@ import anthropic
 
 from app.config import settings
 
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
 DEFAULT_PROMPT = (
     "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
@@ -90,7 +91,12 @@ def fetch_and_process() -> dict:
 
         for source in sources:
             try:
-                feed = feedparser.parse(source.url)
+                old_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(15)
+                try:
+                    feed = feedparser.parse(source.url)
+                finally:
+                    socket.setdefaulttimeout(old_timeout)
             except Exception as e:
                 print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
                 continue
