@@ -55,16 +55,21 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
 def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
     prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
+        # プリフィルで {"relevant": まで固定し、確実にJSONを返させる
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=64,
-            messages=[{"role": "user", "content": prompt}],
+            max_tokens=16,
+            messages=[
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": '{"relevant":'},
+            ],
         )
-        text = message.content[0].text.strip()
+        rest = message.content[0].text.strip()
+        text = '{"relevant":' + rest
         result = json.loads(text)
         return bool(result.get("relevant", False))
     except Exception as e:
-        print(f"[news_fetcher] AI判定エラー: {e}")
+        print(f"[news_fetcher] AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
         return False
 
 
