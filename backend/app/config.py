@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = "/app/conf/env.conf"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()
