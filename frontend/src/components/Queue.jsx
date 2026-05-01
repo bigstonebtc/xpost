@@ -100,7 +100,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
               <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
               <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
               <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
-              <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>delete</button>
+              <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
             </div>
           )}
         </>
