@@ -7,6 +7,8 @@ from app.database import engine, Base, SessionLocal
 from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
+from app.routers import prompts as prompts_router
+from app.routers import documents as documents_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -34,20 +36,22 @@ def _recover_scheduled_tweets():
         db.close()
 
 
-def _migrate_tweets_table():
+def _migrate_db():
+    migrations = [
+        ("tweets", "source_type", "VARCHAR(20) DEFAULT 'manual'"),
+        ("tweets", "news_item_id", "INTEGER"),
+        ("news_settings", "news_prompt_file", "VARCHAR(255) DEFAULT 'news_comment.prompt'"),
+    ]
     with engine.connect() as conn:
-        for col, definition in [
-            ("source_type", "VARCHAR(20) DEFAULT 'manual'"),
-            ("news_item_id", "INTEGER"),
-        ]:
+        for table, col, definition in migrations:
             result = conn.execute(text(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='tweets' AND column_name=:col"
-            ), {"col": col})
+                "WHERE table_name=:tbl AND column_name=:col"
+            ), {"tbl": table, "col": col})
             if not result.fetchone():
-                conn.execute(text(f"ALTER TABLE tweets ADD COLUMN {col} {definition}"))
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {definition}"))
                 conn.commit()
-                print(f"[migration] tweets.{col} を追加しました")
+                print(f"[migration] {table}.{col} を追加しました")
 
 
 _DEFAULT_RELEVANCE_PROMPT = (
@@ -94,7 +98,7 @@ def _seed_news_data():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    _migrate_tweets_table()
+    _migrate_db()
     _seed_news_data()
     _recover_scheduled_tweets()
     from app.services.scheduler import setup_news_fetch_jobs
@@ -118,6 +122,8 @@ app.include_router(queue.router)
 app.include_router(history.router)
 app.include_router(news_router.router)
 app.include_router(settings_router.router)
+app.include_router(prompts_router.router)
+app.include_router(documents_router.router)
 
 
 @app.get("/health")

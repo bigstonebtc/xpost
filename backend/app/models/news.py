@@ -30,6 +30,7 @@ class NewsSettings(Base):
     id = Column(Integer, primary_key=True, index=True)
     fetch_limit_per_run = Column(Integer, default=20)
     relevance_prompt = Column(Text, nullable=False)
+    news_prompt_file = Column(String(255), default="news_comment.prompt")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

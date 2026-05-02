@@ -25,6 +25,7 @@ class ScheduleUpdate(BaseModel):
 class GeneralUpdate(BaseModel):
     fetch_limit_per_run: int
     relevance_prompt: str
+    news_prompt_file: str = "news_comment.prompt"
 
 
 @router.get("/")
@@ -70,11 +71,14 @@ def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends
         raise HTTPException(status_code=400, detail="{title} と {summary} のプレースホルダーが必要です")
     if body.fetch_limit_per_run not in (20, 50, 100):
         raise HTTPException(status_code=400, detail="取得件数上限は 20 / 50 / 100 から選択してください")
+    if not body.news_prompt_file.endswith(".prompt"):
+        raise HTTPException(status_code=400, detail="news_prompt_file は .prompt 拡張子のファイル名を指定してください")
 
     ns = db.query(NewsSettings).first()
     if not ns:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
     ns.fetch_limit_per_run = body.fetch_limit_per_run
     ns.relevance_prompt = body.relevance_prompt
+    ns.news_prompt_file = body.news_prompt_file
     db.commit()
     return {"ok": True}

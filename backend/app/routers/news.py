@@ -2,11 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.news import NewsItem, NewsSource
+from app.models.news import NewsItem, NewsSource, NewsSettings
 from app.models.tweet import Tweet, TweetStatus
-from app.services.writer import generate_tweet_from_news
+from app.services.writer import generate_tweet_from_news, DEFAULT_NEWS_PROMPT_FILE
 
 router = APIRouter(prefix="/news", tags=["news"])
+
+
+def _get_news_prompt_file(db: Session) -> str:
+    ns = db.query(NewsSettings).first()
+    return (ns.news_prompt_file or DEFAULT_NEWS_PROMPT_FILE) if ns else DEFAULT_NEWS_PROMPT_FILE
 
 
 @router.get("/")
@@ -39,7 +44,11 @@ def add_to_queue(item_id: int, db: Session = Depends(get_db), _=Depends(get_curr
     if not item:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
 
-    tweet_text = generate_tweet_from_news(item.title, item.summary or "")
+    prompt_file = _get_news_prompt_file(db)
+    try:
+        tweet_text = generate_tweet_from_news(item.title, item.summary or "", prompt_file=prompt_file)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     item.tweet_text = tweet_text
 
     content = tweet_text + "\n" + item.url
@@ -71,7 +80,12 @@ def regenerate_tweet(item_id: int, db: Session = Depends(get_db), _=Depends(get_
     item = db.query(NewsItem).filter(NewsItem.id == item_id, NewsItem.status == "pending").first()
     if not item:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
-    tweet_text = generate_tweet_from_news(item.title, item.summary or "")
+
+    prompt_file = _get_news_prompt_file(db)
+    try:
+        tweet_text = generate_tweet_from_news(item.title, item.summary or "", prompt_file=prompt_file)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     item.tweet_text = tweet_text
     db.commit()
     return {"tweet_text": tweet_text}
