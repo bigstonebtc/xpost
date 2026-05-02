@@ -27,6 +27,8 @@ export default function NewsSettings() {
   const [sources, setSources] = useState([])
   const [schedules, setSchedules] = useState([])
   const [fetchLimit, setFetchLimit] = useState(20)
+  const [newsPromptFile, setNewsPromptFile] = useState('news_comment.prompt')
+  const [promptOptions, setPromptOptions] = useState([])
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -34,11 +36,13 @@ export default function NewsSettings() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.newsSettings()
+      const [data, prompts] = await Promise.all([api.newsSettings(), api.promptsList()])
       setSources(data.sources)
       setSchedules(data.schedules)
+      setPromptOptions(prompts)
       if (data.general) {
         setFetchLimit(data.general.fetch_limit_per_run)
+        setNewsPromptFile(data.general.news_prompt_file || 'news_comment.prompt')
         setPrompt(data.general.relevance_prompt)
       }
     } catch (e) {
@@ -98,7 +102,7 @@ export default function NewsSettings() {
     }
     setSaving(true)
     try {
-      await api.newsUpdateGeneral(fetchLimit, prompt)
+      await api.newsUpdateGeneral(fetchLimit, prompt, newsPromptFile)
       flash('ok', '保存しました ✓')
     } catch (e) {
       flash('err', e.message)
@@ -144,6 +148,17 @@ export default function NewsSettings() {
           <span style={styles.limitLabel}>1回あたりの取得件数上限</span>
           <select style={styles.select} value={fetchLimit} onChange={e => setFetchLimit(Number(e.target.value))}>
             {LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n}件</option>)}
+          </select>
+        </div>
+        <div style={styles.limitRow}>
+          <span style={styles.limitLabel}>ニュース生成に使用するプロンプト</span>
+          <select style={styles.select} value={newsPromptFile} onChange={e => setNewsPromptFile(e.target.value)}>
+            {promptOptions.length === 0 && (
+              <option value={newsPromptFile}>{newsPromptFile}</option>
+            )}
+            {promptOptions.map(p => (
+              <option key={p.filename} value={p.filename}>{p.name}</option>
+            ))}
           </select>
         </div>
 

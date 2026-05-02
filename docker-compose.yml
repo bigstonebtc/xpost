@@ -22,8 +22,8 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./data:/app/data:ro
-      - ./tweetsource:/app/tweetsource:ro
+      - ./prompts:/app/prompts
+      - ./documents:/app/documents:ro
 
   frontend:
     build: ./frontend

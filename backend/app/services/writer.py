@@ -1,49 +1,31 @@
 import anthropic
 import json
 import random
-from pathlib import Path
 from app.config import settings
+from app.services.conf_parser import load_conf, load_documents
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-DATA_DIR = Path("/app/data")
-TWEETSOURCE_DIR = Path("/app/tweetsource")
-SYSTEM_PROMPT_FILE = DATA_DIR / "system_prompt.txt"
-
-SYSTEM_PROMPT_FALLBACK = """必ずJSON配列で10件のツイートを返してください。
-例: ["ツイート1", "ツイート2", ...]"""
+DEFAULT_PROMPT_FILE = "souzokuzei_ronten.prompt"
+DEFAULT_NEWS_PROMPT_FILE = "news_comment.prompt"
 
 
-def _load_system_prompt() -> str:
-    if SYSTEM_PROMPT_FILE.exists():
-        return SYSTEM_PROMPT_FILE.read_text(encoding="utf-8")
-    return SYSTEM_PROMPT_FALLBACK
+def generate_tweets(past_tweets: list[str], prompt_file: str = DEFAULT_PROMPT_FILE) -> list[str]:
+    try:
+        conf = load_conf(prompt_file)
+    except FileNotFoundError as e:
+        raise ValueError(str(e))
 
-
-def _load_source_material() -> str:
-    texts = []
-    for f in sorted(TWEETSOURCE_DIR.glob("*")):
-        if f.is_file():
-            try:
-                texts.append(f.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-    return "\n\n---\n\n".join(texts) if texts else ""
-
-
-def generate_tweets(past_tweets: list[str]) -> list[str]:
-    system_prompt = _load_system_prompt()
-    source = _load_source_material()
+    system_prompt = conf["prompt"]
+    source = load_documents(conf["documents"])
 
     past_section = ""
     if past_tweets:
         samples = random.sample(past_tweets, min(20, len(past_tweets)))
         past_section = "\n【過去の投稿（これらと表現が被らないようにすること）】\n" + "\n".join(f"- {t}" for t in samples)
 
-    # システムプロンプトをキャッシュ（安定コンテンツ）
     system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
 
-    # ユーザーメッセージ: 安定部分（参考資料）はキャッシュ、変動部分（過去ツイート＋指示）はキャッシュしない
     content = []
     if source:
         content.append({
@@ -72,24 +54,47 @@ def generate_tweets(past_tweets: list[str]) -> list[str]:
     return [t[:140] for t in tweets[:10]]
 
 
-def generate_tweet_from_news(title: str, summary: str, max_chars: int = 128) -> str:
-    system_prompt = _load_system_prompt()
+def generate_tweet_from_news(
+    title: str,
+    summary: str,
+    prompt_file: str = DEFAULT_NEWS_PROMPT_FILE,
+    max_chars: int = 128,
+) -> str:
+    try:
+        conf = load_conf(prompt_file)
+    except FileNotFoundError as e:
+        raise ValueError(str(e))
+
+    system_prompt = conf["prompt"]
+    source = load_documents(conf["documents"])
+
     system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
 
-    user_content = (
-        f"以下のニュース記事をもとに、アカウントの思想・論調に合わせたツイートを{max_chars}文字以内で1件生成してください。\n"
-        "URLは別途末尾に付与するため本文に含めないこと。\n"
-        f"必ず{max_chars}文字以内厳守。JSON配列で1件のみ返答。\n\n"
-        f"タイトル：{title}\n"
-        f"概要：{summary or '（概要なし）'}\n\n"
-        '例: ["ツイート本文"]'
-    )
+    content = []
+    if source:
+        content.append({
+            "type": "text",
+            "text": f"【参考資料】\n{source}",
+            "cache_control": {"type": "ephemeral"},
+        })
+
+    content.append({
+        "type": "text",
+        "text": (
+            f"以下のニュース記事をもとに、アカウントの思想・論調に合わせたツイートを{max_chars}文字以内で1件生成してください。\n"
+            "URLは別途末尾に付与するため本文に含めないこと。\n"
+            f"必ず{max_chars}文字以内厳守。JSON配列で1件のみ返答。\n\n"
+            f"タイトル：{title}\n"
+            f"概要：{summary or '（概要なし）'}\n\n"
+            '例: ["ツイート本文"]'
+        ),
+    })
 
     message = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=512,
         system=system,
-        messages=[{"role": "user", "content": user_content}],
+        messages=[{"role": "user", "content": content}],
     )
 
     text = message.content[0].text.strip()
