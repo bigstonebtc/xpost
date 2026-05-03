@@ -50,6 +50,18 @@ def _migrate_tweets_table():
                 print(f"[migration] tweets.{col} を追加しました")
 
 
+def _migrate_news_settings_table():
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='news_settings' AND column_name='schedule_mode'"
+        ))
+        if not result.fetchone():
+            conn.execute(text("ALTER TABLE news_settings ADD COLUMN schedule_mode VARCHAR(20) DEFAULT '120min'"))
+            conn.commit()
+            print("[migration] news_settings.schedule_mode を追加しました")
+
+
 _DEFAULT_RELEVANCE_PROMPT = (
     "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
     "投稿素材として関連性があるか判定してください。\n\n"
@@ -95,6 +107,7 @@ def _seed_news_data():
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _migrate_tweets_table()
+    _migrate_news_settings_table()
     _seed_news_data()
     _recover_scheduled_tweets()
     from app.services.scheduler import setup_news_fetch_jobs

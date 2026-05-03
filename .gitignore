@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+conf/env.conf
 
 # 素材ドキュメント・仕様書（VPS上のみ保管）
 docs/

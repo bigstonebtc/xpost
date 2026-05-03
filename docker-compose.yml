@@ -2,14 +2,11 @@ services:
   db:
     image: postgres:16-alpine
     restart: always
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+    env_file: ./conf/env.conf
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -17,13 +14,14 @@ services:
   backend:
     build: ./backend
     restart: always
-    env_file: .env
+    env_file: ./conf/env.conf
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./data:/app/data:ro
       - ./tweetsource:/app/tweetsource:ro
+      - ./conf/env.conf:/app/conf/env.conf:ro
 
   frontend:
     build: ./frontend

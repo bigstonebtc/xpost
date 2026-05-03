@@ -66,14 +66,15 @@ export default function App() {
         <NavLink to="/queue" style={navLinkStyle}>キュー</NavLink>
         <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>
         <NavLink to="/history" style={navLinkStyle}>履歴</NavLink>
-        <NavLink to="/news-settings" style={navLinkStyle}>ニュース設定</NavLink>
+        <NavLink to="/settings" style={navLinkStyle}>設定</NavLink>
       </nav>
       <div style={styles.container}>
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/queue" element={<Queue />} />
           <Route path="/news" element={<News />} />
-          <Route path="/news-settings" element={<NewsSettings />} />
+          <Route path="/news-settings" element={<Navigate to="/settings" />} />
+          <Route path="/settings" element={<NewsSettings />} />
           <Route path="/history" element={<History />} />
           <Route path="*" element={<Navigate to="/queue" />} />
         </Routes>

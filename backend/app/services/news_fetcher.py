@@ -1,6 +1,7 @@
 import math
 import time
 import json
+import socket
 import traceback
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
@@ -11,7 +12,7 @@ import anthropic
 
 from app.config import settings
 
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
 DEFAULT_PROMPT = (
     "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
@@ -54,16 +55,21 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
 def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
     prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
+        # プリフィルで {"relevant": まで固定し、確実にJSONを返させる
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=64,
-            messages=[{"role": "user", "content": prompt}],
+            max_tokens=16,
+            messages=[
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": '{"relevant":'},
+            ],
         )
-        text = message.content[0].text.strip()
+        rest = message.content[0].text.strip()
+        text = '{"relevant":' + rest
         result = json.loads(text)
         return bool(result.get("relevant", False))
     except Exception as e:
-        print(f"[news_fetcher] AI判定エラー: {e}")
+        print(f"[news_fetcher] AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
         return False
 
 
@@ -90,7 +96,12 @@ def fetch_and_process() -> dict:
 
         for source in sources:
             try:
-                feed = feedparser.parse(source.url)
+                old_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(15)
+                try:
+                    feed = feedparser.parse(source.url)
+                finally:
+                    socket.setdefaulttimeout(old_timeout)
             except Exception as e:
                 print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
                 continue
@@ -117,13 +128,13 @@ def fetch_and_process() -> dict:
                     stats["skipped_old"] += 1
                     continue
 
-                stats["fetched"] += 1
-                count_this_source += 1
-
                 existing = db.query(NewsItem).filter(NewsItem.url == url).first()
                 if existing:
                     stats["skipped_duplicate"] += 1
                     continue
+
+                stats["fetched"] += 1
+                count_this_source += 1
 
                 ai_relevant = _ai_relevance_check(title, summary, prompt_template)
 

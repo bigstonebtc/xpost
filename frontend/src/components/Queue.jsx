@@ -7,7 +7,7 @@ const s = {
   meta: { fontSize: '12px', color: '#999', marginBottom: '8px' },
   btnRow: { display: 'flex', gap: '8px' },
   btn: (color) => ({ padding: '6px 14px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', background: color, color: '#fff', fontWeight: 'bold' }),
-  textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' },
+  textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '160px', fontFamily: 'inherit', boxSizing: 'border-box' },
   counter: (over) => ({ fontSize: '12px', textAlign: 'right', marginBottom: '8px', color: over ? '#e53e3e' : '#888' }),
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', marginTop: '20px' },
   genBtn: { padding: '10px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
@@ -33,6 +33,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const handlePost = async () => {
     setLoading(true)
     try { await api.post(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const handleSchedule = async () => {
+    setLoading(true)
+    try { await api.schedule(tweet.id); onRefresh() }
     catch (e) { alert(e.message) }
     finally { setLoading(false) }
   }
@@ -90,9 +97,10 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             </>
           ) : (
             <div style={s.btnRow}>
-              <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>post</button>
-              <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
+              <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
+              <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
               <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
+              <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
             </div>
           )}
         </>
