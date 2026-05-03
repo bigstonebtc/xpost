@@ -40,7 +40,7 @@ export const api = {
   },
   stats: () => request('GET', '/history/stats'),
   queue: () => request('GET', '/queue/'),
-  generate: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
+  generate: () => request('POST', '/tweets/generate'),
   post: (id) => request('POST', `/queue/${id}/post`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
   edit: (id, content) => request('PUT', `/queue/${id}`, { content }),
@@ -56,14 +56,6 @@ export const api = {
   newsSettings: () => request('GET', '/settings/news/'),
   newsUpdateSource: (id, is_enabled) => request('PUT', `/settings/news/sources/${id}`, { is_enabled }),
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
-  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, news_prompt_file) =>
-    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, news_prompt_file }),
-  // プロンプト管理
-  promptsList: () => request('GET', '/prompts/'),
-  promptGet: (filename) => request('GET', `/prompts/${filename}`),
-  promptCreate: (body) => request('POST', '/prompts/', body),
-  promptUpdate: (filename, body) => request('PUT', `/prompts/${filename}`, body),
-  promptDelete: (filename) => request('DELETE', `/prompts/${filename}`),
-  // 資料一覧
-  documentsList: () => request('GET', '/documents/'),
+  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt) =>
+    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt }),
 }
