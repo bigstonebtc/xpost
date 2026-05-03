@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 
 const s = {
@@ -11,7 +10,7 @@ const s = {
   textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' },
   counter: (over) => ({ fontSize: '12px', textAlign: 'right', marginBottom: '8px', color: over ? '#e53e3e' : '#888' }),
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', marginTop: '20px' },
-  createBtn: { padding: '10px 16px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', textDecoration: 'none', display: 'inline-block' },
+  genBtn: { padding: '10px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
   clearBtn: { padding: '8px 14px', background: '#fff', color: '#e53e3e', border: '1px solid #e53e3e', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
   scheduled: { fontSize: '12px', color: '#718096', marginTop: '6px' },
 }
@@ -104,11 +103,19 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
 export default function Queue() {
   const [tweets, setTweets] = useState([])
-  const navigate = useNavigate()
+  const [loading, setLoading] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   const load = () => api.queue().then(setTweets).catch(e => alert(e.message))
 
   useEffect(() => { load() }, [])
+
+  const handleGenerate = async () => {
+    setGenerating(true)
+    try { await api.generate(); await load() }
+    catch (e) { alert(e.message) }
+    finally { setGenerating(false) }
+  }
 
   const handleClear = async () => {
     if (!confirm('キューを全件削除しますか？')) return
@@ -126,8 +133,8 @@ export default function Queue() {
         <h2 style={{ fontSize: '18px' }}>キュー（{tweets.length}件）</h2>
         <div style={s.btnRow}>
           {tweets.length > 0 && <button style={s.clearBtn} onClick={handleClear}>全件削除</button>}
-          <button style={s.createBtn} onClick={() => navigate('/create')}>
-            ツイート作成画面へ →
+          <button style={s.genBtn} onClick={handleGenerate} disabled={generating}>
+            {generating ? '生成中...' : '＋ 10件生成'}
           </button>
         </div>
       </div>
