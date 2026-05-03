@@ -9,7 +9,7 @@ from app.dependencies import get_current_user
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
 PROMPTS_DIR = Path("/app/prompts")
-DOCUMENTS_DIR = Path("/app/prompts")
+DOCUMENTS_DIR = Path("/app/documents")
 
 _VALID_FILENAME = re.compile(r"^[a-zA-Z0-9_]+\.prompt$")
 

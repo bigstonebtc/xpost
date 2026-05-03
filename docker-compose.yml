@@ -23,6 +23,7 @@ services:
       - ./tweetsource:/app/tweetsource:ro
       - ./conf/env.conf:/app/conf/env.conf:ro
       - ./prompts:/app/prompts
+      - ./documents:/app/documents:ro
 
   frontend:
     build: ./frontend
