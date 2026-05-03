@@ -31,6 +31,7 @@ class NewsSettings(Base):
     fetch_limit_per_run = Column(Integer, default=20)
     relevance_prompt = Column(Text, nullable=False)
     schedule_mode = Column(String(20), default="120min")
+    news_prompt_file = Column(String(255), default="news_comment.prompt")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

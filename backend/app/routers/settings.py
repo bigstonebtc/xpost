@@ -30,6 +30,7 @@ class GeneralUpdate(BaseModel):
     fetch_limit_per_run: int
     relevance_prompt: str
     schedule_mode: str = "120min"
+    news_prompt_file: Optional[str] = "news_comment.prompt"
 
 
 @router.get("/")
@@ -89,5 +90,6 @@ def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends
     ns.fetch_limit_per_run = body.fetch_limit_per_run
     ns.relevance_prompt = body.relevance_prompt
     ns.schedule_mode = body.schedule_mode
+    ns.news_prompt_file = body.news_prompt_file or "news_comment.prompt"
     db.commit()
     return {"ok": True}

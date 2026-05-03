@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-do
 import { getToken, setToken, api } from './api'
 import Dashboard from './components/Dashboard'
 import Queue from './components/Queue'
+import TweetCreate from './components/TweetCreate'
 import History from './components/History'
 import News from './components/News'
 import NewsSettings from './components/NewsSettings'
@@ -64,6 +65,7 @@ export default function App() {
         <span style={styles.navTitle}>xpost</span>
         <NavLink to="/dashboard" style={navLinkStyle}>ダッシュボード</NavLink>
         <NavLink to="/queue" style={navLinkStyle}>キュー</NavLink>
+        <NavLink to="/create" style={navLinkStyle}>ツイート作成</NavLink>
         <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>
         <NavLink to="/history" style={navLinkStyle}>履歴</NavLink>
         <NavLink to="/settings" style={navLinkStyle}>設定</NavLink>
@@ -72,6 +74,7 @@ export default function App() {
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/queue" element={<Queue />} />
+          <Route path="/create" element={<TweetCreate />} />
           <Route path="/news" element={<News />} />
           <Route path="/news-settings" element={<Navigate to="/settings" />} />
           <Route path="/settings" element={<NewsSettings />} />

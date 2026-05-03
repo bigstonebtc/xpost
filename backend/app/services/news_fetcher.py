@@ -88,6 +88,7 @@ def fetch_and_process() -> dict:
         ns = db.query(NewsSettings).first()
         total_limit = ns.fetch_limit_per_run if ns else 20
         prompt_template = ns.relevance_prompt if ns else DEFAULT_PROMPT
+        news_prompt_file = ns.news_prompt_file if ns else "news_comment.prompt"
 
         limit_per_source = math.ceil(total_limit / len(sources))
 
@@ -152,7 +153,7 @@ def fetch_and_process() -> dict:
                     db.flush()
                     continue
 
-                tweet_text = generate_tweet_from_news(title, summary)
+                tweet_text = generate_tweet_from_news(title, summary, prompt_file=news_prompt_file)
                 db.add(NewsItem(
                     title=title,
                     url=url,
