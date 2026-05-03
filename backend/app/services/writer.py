@@ -6,7 +6,7 @@ from app.config import settings
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-PROMPTS_DIR = Path("/app/prompt")
+PROMPTS_DIR = Path("/app/prompts")
 DOCUMENTS_DIR = Path("/app/documents")
 
 _FALLBACK_PROMPT = """必ずJSON配列で10件のツイートを返してください。
