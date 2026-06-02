@@ -36,6 +36,8 @@ const s = {
 function PromptModal({ initial, documents, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || '')
   const [selectedDocs, setSelectedDocs] = useState(initial?.documents || [])
+  const [topics, setTopics] = useState(initial?.topics || '')
+  const [types, setTypes] = useState(initial?.types || '')
   const [prompt, setPrompt] = useState(initial?.prompt || '')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
@@ -52,7 +54,7 @@ function PromptModal({ initial, documents, onSave, onClose }) {
     if (!prompt.trim()) { setErr('プロンプト本文は必須です'); return }
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), documents: selectedDocs, prompt: prompt.trim() })
+      await onSave({ name: name.trim(), documents: selectedDocs, topics, types, prompt: prompt.trim() })
     } catch (e) {
       setErr(e.message)
       setSaving(false)
@@ -83,6 +85,12 @@ function PromptModal({ initial, documents, onSave, onClose }) {
 
         <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span></label>
         <textarea style={s.textarea} value={prompt} onChange={e => setPrompt(e.target.value)} spellCheck={false} />
+
+        <label style={s.label}>論点リスト（任意）<span style={{ color: '#aaa', marginLeft: '6px', fontWeight: 'normal' }}>1行1論点。プロンプト本文に {'{topic}'} がある場合に使用</span></label>
+        <textarea style={{ ...s.textarea, minHeight: '200px' }} value={topics} onChange={e => setTopics(e.target.value)} spellCheck={false} placeholder={'A1. 相続財産は...\nA2. 死亡は経済的付加価値を...'} />
+
+        <label style={s.label}>型リスト（任意）<span style={{ color: '#aaa', marginLeft: '6px', fontWeight: 'normal' }}>1行1型。プロンプト本文に {'{type}'} がある場合に使用</span></label>
+        <textarea style={{ ...s.textarea, minHeight: '120px' }} value={types} onChange={e => setTypes(e.target.value)} spellCheck={false} placeholder={'【問いかけ型】読者に疑問を投げかける\n【データ型】数字・統計を冒頭に出す'} />
 
         <div style={s.modalBtnRow}>
           <button style={s.cancelBtn} onClick={onClose} disabled={saving}>キャンセル</button>

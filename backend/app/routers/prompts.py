@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -19,55 +20,128 @@ def _ensure_dirs():
     DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _parse_multiline_field(lines: list[str]) -> str:
+    """インデントされた続き行を結合して返す（空行・#コメントはスキップ）"""
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            result.append(stripped)
+    return "\n".join(result)
+
+
 def _parse_prompt_file(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     name = path.stem
     documents = []
+    topics_lines = []
+    types_lines = []
     body_lines = []
-    in_prompt_section = False
+
+    # パース状態: header / topics / types / prompt
+    state = "header"
 
     for line in text.splitlines():
-        if in_prompt_section:
+        if state == "prompt":
             body_lines.append(line)
             continue
+
         stripped = line.strip()
+
         if stripped.startswith("[prompt]"):
-            in_prompt_section = True
+            state = "prompt"
             continue
+
+        # 継続行（インデントあり）は現在のマルチライン状態に追加
+        if line.startswith(" ") or line.startswith("\t"):
+            if state == "topics":
+                if stripped and not stripped.startswith("#"):
+                    topics_lines.append(stripped)
+            elif state == "types":
+                if stripped and not stripped.startswith("#"):
+                    types_lines.append(stripped)
+            continue
+
+        # 空行はヘッダー継続行の区切りとして扱うがstateは維持
+        if not stripped:
+            continue
+
         if stripped.startswith("#"):
             continue
+
         if "=" in stripped:
             key, _, val = stripped.partition("=")
             key = key.strip()
             val = val.strip()
             if key == "name":
                 name = val
+                state = "header"
             elif key == "documents":
                 documents = [d.strip() for d in val.split(",") if d.strip()]
+                state = "header"
+            elif key == "topics":
+                state = "topics"
+                if val:
+                    topics_lines.append(val)
+            elif key == "types":
+                state = "types"
+                if val:
+                    types_lines.append(val)
 
     return {
         "filename": path.name,
         "name": name,
         "documents": documents,
+        "topics": "\n".join(topics_lines),
+        "types": "\n".join(types_lines),
         "prompt": "\n".join(body_lines).strip(),
     }
 
 
-def _write_prompt_file(path: Path, name: str, documents: list[str], prompt: str):
+def _write_prompt_file(
+    path: Path,
+    name: str,
+    documents: list[str],
+    prompt: str,
+    topics: str = "",
+    types: str = "",
+):
     docs_str = ", ".join(documents)
-    content = f"# プロンプト設定ファイル\nname = {name}\ndocuments = {docs_str}\n\n[prompt]\n{prompt}\n"
-    path.write_text(content, encoding="utf-8")
+    lines = ["# プロンプト設定ファイル", f"name = {name}", f"documents = {docs_str}"]
+
+    if topics.strip():
+        lines.append("topics =")
+        for line in topics.strip().splitlines():
+            if line.strip():
+                lines.append(f"  {line.strip()}")
+
+    if types.strip():
+        lines.append("types =")
+        for line in types.strip().splitlines():
+            if line.strip():
+                lines.append(f"  {line.strip()}")
+
+    lines.append("")
+    lines.append("[prompt]")
+    lines.append(prompt)
+    lines.append("")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 class PromptCreate(BaseModel):
     name: str
     documents: list[str] = []
+    topics: Optional[str] = ""
+    types: Optional[str] = ""
     prompt: str
 
 
 class PromptUpdate(BaseModel):
     name: str
     documents: list[str] = []
+    topics: Optional[str] = ""
+    types: Optional[str] = ""
     prompt: str
 
 
@@ -106,7 +180,7 @@ def create_prompt(body: PromptCreate, _=Depends(get_current_user)):
     if path.exists():
         raise HTTPException(status_code=409, detail=f"{filename} は既に存在します")
 
-    _write_prompt_file(path, body.name, body.documents, body.prompt)
+    _write_prompt_file(path, body.name, body.documents, body.prompt, body.topics or "", body.types or "")
     return _parse_prompt_file(path)
 
 
@@ -123,7 +197,7 @@ def update_prompt(filename: str, body: PromptUpdate, _=Depends(get_current_user)
     if not path.exists():
         raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
 
-    _write_prompt_file(path, body.name, body.documents, body.prompt)
+    _write_prompt_file(path, body.name, body.documents, body.prompt, body.topics or "", body.types or "")
     return _parse_prompt_file(path)
 
 
