@@ -129,8 +129,8 @@ function PromptCard({ prompt, documents, onRefresh }) {
     }
   }
 
-  const handleEdit = async ({ name, documents: docs, prompt: body }) => {
-    await api.updatePrompt(prompt.filename, { name, documents: docs, prompt: body })
+  const handleEdit = async ({ name, documents: docs, topics, types, prompt: body }) => {
+    await api.updatePrompt(prompt.filename, { name, documents: docs, topics, types, prompt: body })
     setShowEdit(false)
     onRefresh()
   }
@@ -189,8 +189,8 @@ export default function TweetCreate() {
 
   useEffect(() => { load() }, [load])
 
-  const handleCreate = async ({ name, documents: docs, prompt }) => {
-    await api.createPrompt({ name, documents: docs, prompt })
+  const handleCreate = async ({ name, documents: docs, topics, types, prompt }) => {
+    await api.createPrompt({ name, documents: docs, topics, types, prompt })
     setShowNew(false)
     load()
   }
