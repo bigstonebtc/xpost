@@ -160,6 +160,32 @@ export default function NewsSettings() {
               <div style={styles.radioDesc}>向こう24時間以内の朝7時〜夜8時の範囲でランダムなタイミングで投稿</div>
             </div>
           </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name="scheduleMode"
+              value="72h"
+              checked={scheduleMode === '72h'}
+              onChange={() => setScheduleMode('72h')}
+            />
+            <div>
+              <div>72時間以内にランダム投稿</div>
+              <div style={styles.radioDesc}>Scheduleボタンを押してから最大72時間以内にランダムなタイミングで投稿</div>
+            </div>
+          </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name="scheduleMode"
+              value="120h"
+              checked={scheduleMode === '120h'}
+              onChange={() => setScheduleMode('120h')}
+            />
+            <div>
+              <div>120時間以内にランダム投稿</div>
+              <div style={styles.radioDesc}>Scheduleボタンを押してから最大120時間以内にランダムなタイミングで投稿</div>
+            </div>
+          </label>
         </div>
         <button style={styles.saveBtn} onClick={saveGeneral} disabled={saving}>保存</button>
       </div>

@@ -81,8 +81,8 @@ def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends
         raise HTTPException(status_code=400, detail="{title} と {summary} のプレースホルダーが必要です")
     if body.fetch_limit_per_run not in (20, 50, 100):
         raise HTTPException(status_code=400, detail="取得件数上限は 20 / 50 / 100 から選択してください")
-    if body.schedule_mode not in ("120min", "24h_daytime"):
-        raise HTTPException(status_code=400, detail="schedule_mode は '120min' か '24h_daytime' を指定してください")
+    if body.schedule_mode not in ("120min", "24h_daytime", "72h", "120h"):
+        raise HTTPException(status_code=400, detail="schedule_mode は '120min' / '24h_daytime' / '72h' / '120h' を指定してください")
 
     ns = db.query(NewsSettings).first()
     if not ns:

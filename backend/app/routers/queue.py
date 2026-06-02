@@ -79,6 +79,12 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
 
     if mode == "24h_daytime":
         scheduled_at = _random_daytime_schedule()
+    elif mode == "72h":
+        delay_minutes = random.randint(1, 72 * 60)
+        scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+    elif mode == "120h":
+        delay_minutes = random.randint(1, 120 * 60)
+        scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
     else:
         delay_minutes = random.randint(1, 120)
         scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
