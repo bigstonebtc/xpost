@@ -72,7 +72,13 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
-    }).then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || 'エラー') }))
+    }).then(async r => {
+      if (r.ok) return r.json()
+      const text = await r.text()
+      let msg = `アップロードエラー (${r.status})`
+      try { msg = JSON.parse(text).detail || msg } catch {}
+      throw new Error(msg)
+    })
   },
   deleteImage: (tweetId) => request('DELETE', `/images/${tweetId}`),
   // プロンプト管理
