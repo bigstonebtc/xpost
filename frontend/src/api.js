@@ -81,6 +81,11 @@ export const api = {
     })
   },
   deleteImage: (tweetId) => request('DELETE', `/images/${tweetId}`),
+  // APIキー設定
+  getApiKeys: () => request('GET', '/settings/apikeys'),
+  getApiKeysRaw: () => request('GET', '/settings/apikeys/raw'),
+  updateApiKeys: (keys) => request('PUT', '/settings/apikeys', keys),
+  restartApp: () => request('POST', '/settings/restart'),
   // プロンプト管理
   listPrompts: () => request('GET', '/prompts/'),
   getPrompt: (filename) => request('GET', `/prompts/${filename}`),
