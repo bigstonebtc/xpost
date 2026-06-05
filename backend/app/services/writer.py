@@ -125,8 +125,17 @@ async def _generate_tweets_async(
     topics = cfg.get("topics", [])
     types = cfg.get("types", [])
 
-    selected_topics = random.sample(topics, min(count, len(topics))) if use_topic and topics else []
-    shuffled_types = random.sample(types, min(count, len(types))) if use_type and types else []
+    # topics/typesが足りない場合はランダムで補充（循環）
+    def _pick(lst: list, n: int) -> list[str]:
+        if not lst:
+            return [""] * n
+        pool = random.sample(lst, min(n, len(lst)))
+        while len(pool) < n:
+            pool += random.sample(lst, min(n - len(pool), len(lst)))
+        return pool[:n]
+
+    selected_topics = _pick(topics, count) if use_topic else []
+    shuffled_types = _pick(types, count) if use_type else []
 
     past_section = ""
     if past_tweets:
@@ -134,26 +143,24 @@ async def _generate_tweets_async(
         past_section = "\n【過去の投稿（これらと表現が被らないようにすること）】\n" + "\n".join(f"- {t}" for t in samples)
 
     async def generate_one(i: int) -> str:
+        # .replace() を使用（str.format() は {topic}/{type} でKeyErrorになるため使わない）
         prompt = prompt_template
-        if use_topic and i < len(selected_topics):
+        if use_topic:
             prompt = prompt.replace("{topic}", selected_topics[i])
-        if use_type and i < len(shuffled_types):
+        if use_type:
             prompt = prompt.replace("{type}", shuffled_types[i])
 
         user_content = []
         if source:
             user_content.append({
                 "type": "text",
-                "text": f"【参考資料】\n{source}",
+                "text": "【参考資料】\n" + source,
                 "cache_control": {"type": "ephemeral"},
             })
+        instruction = "140文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
         user_content.append({
             "type": "text",
-            "text": (
-                f"{past_section}\n\n140文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
-                if past_section else
-                "140文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
-            ),
+            "text": past_section + "\n\n" + instruction if past_section else instruction,
         })
 
         result = await _call_claude_async(prompt, user_content)
