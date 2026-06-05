@@ -100,11 +100,19 @@ def fetch_and_process() -> dict:
                 old_timeout = socket.getdefaulttimeout()
                 socket.setdefaulttimeout(15)
                 try:
-                    feed = feedparser.parse(source.url)
+                    feed = feedparser.parse(
+                        source.url,
+                        agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    )
                 finally:
                     socket.setdefaulttimeout(old_timeout)
             except Exception as e:
                 print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
+                continue
+
+            status = getattr(feed, "status", None)
+            if status and status >= 400:
+                print(f"[news_fetcher] RSS HTTP {status} — スキップ: {source.name} ({source.url})")
                 continue
 
             count_this_source = 0
