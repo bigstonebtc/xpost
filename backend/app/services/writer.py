@@ -1,14 +1,13 @@
-import asyncio
 import json
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import anthropic
 
 from app.config import settings
 
-async_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-sync_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 PROMPTS_DIR = Path("/app/prompts")
 DOCUMENTS_DIR = Path("/app/documents")
@@ -81,7 +80,7 @@ def _load_documents(doc_names: list[str]) -> str:
         path = DOCUMENTS_DIR / name
         if path.is_file():
             try:
-                texts.append(f"【資料: {name}】\n{path.read_text(encoding='utf-8', errors='ignore')}")
+                texts.append("【資料: " + name + "】\n" + path.read_text(encoding="utf-8", errors="ignore"))
             except Exception:
                 pass
     return "\n\n---\n\n".join(texts)
@@ -95,10 +94,21 @@ def _resolve_prompt(prompt_file: str | None) -> dict:
     return {"name": "default", "documents": [], "topics": [], "types": [], "prompt": _FALLBACK_PROMPT}
 
 
-async def _call_claude_async(system_prompt: str, user_content: list[dict], max_tokens: int = 256) -> str:
-    message = await async_client.messages.create(
+def _pick(lst: list, n: int) -> list[str]:
+    """n件選ぶ。lst < n の場合はランダム循環で補充。lst が空なら空文字リスト。"""
+    if not lst:
+        return [""] * n
+    pool = random.sample(lst, min(n, len(lst)))
+    while len(pool) < n:
+        pool += random.sample(lst, min(n - len(pool), len(lst)))
+    return pool[:n]
+
+
+def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
+    """同期で Claude API を1回呼び、ツイート1件を返す。"""
+    message = client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=max_tokens,
+        max_tokens=256,
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],
     )
@@ -107,43 +117,31 @@ async def _call_claude_async(system_prompt: str, user_content: list[dict], max_t
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
     try:
         items = json.loads(text)
-        return items[0] if items else ""
+        return (items[0] if items else "")[:140]
     except Exception:
         return text[:140]
 
 
-async def _generate_tweets_async(
-    cfg: dict,
-    source: str,
-    past_tweets: list[str],
-    count: int = 10,
-) -> list[str]:
+def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
+    cfg = _resolve_prompt(prompt_file)
+    source = _load_documents(cfg["documents"])
     prompt_template = cfg["prompt"] or _FALLBACK_PROMPT
+
     use_topic = "{topic}" in prompt_template
     use_type = "{type}" in prompt_template
 
-    topics = cfg.get("topics", [])
-    types = cfg.get("types", [])
-
-    # topics/typesが足りない場合はランダムで補充（循環）
-    def _pick(lst: list, n: int) -> list[str]:
-        if not lst:
-            return [""] * n
-        pool = random.sample(lst, min(n, len(lst)))
-        while len(pool) < n:
-            pool += random.sample(lst, min(n - len(pool), len(lst)))
-        return pool[:n]
-
-    selected_topics = _pick(topics, count) if use_topic else []
-    shuffled_types = _pick(types, count) if use_type else []
+    selected_topics = _pick(cfg.get("topics", []), count) if use_topic else []
+    shuffled_types = _pick(cfg.get("types", []), count) if use_type else []
 
     past_section = ""
     if past_tweets:
         samples = random.sample(past_tweets, min(20, len(past_tweets)))
-        past_section = "\n【過去の投稿（これらと表現が被らないようにすること）】\n" + "\n".join(f"- {t}" for t in samples)
+        past_section = "\n【過去の投稿（これらと表現が被らないようにすること）】\n" + "\n".join("- " + t for t in samples)
 
-    async def generate_one(i: int) -> str:
-        # .replace() を使用（str.format() は {topic}/{type} でKeyErrorになるため使わない）
+    instruction = "140文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
+
+    def build_call(i: int):
+        # str.replace() を使用（str.format() は {topic}/{type} でKeyErrorになるため不可）
         prompt = prompt_template
         if use_topic:
             prompt = prompt.replace("{topic}", selected_topics[i])
@@ -157,23 +155,25 @@ async def _generate_tweets_async(
                 "text": "【参考資料】\n" + source,
                 "cache_control": {"type": "ephemeral"},
             })
-        instruction = "140文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
         user_content.append({
             "type": "text",
             "text": past_section + "\n\n" + instruction if past_section else instruction,
         })
+        return prompt, user_content
 
-        result = await _call_claude_async(prompt, user_content)
-        return result[:140]
+    calls = [build_call(i) for i in range(count)]
 
-    results = await asyncio.gather(*[generate_one(i) for i in range(count)])
+    results = [""] * count
+    with ThreadPoolExecutor(max_workers=count) as executor:
+        future_to_idx = {executor.submit(_call_claude_once, p, uc): i for i, (p, uc) in enumerate(calls)}
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                print(f"[writer] generate_tweets [{idx}] エラー: {e}")
+
     return [t for t in results if t]
-
-
-def generate_tweets(past_tweets: list[str], prompt_file: str | None = None) -> list[str]:
-    cfg = _resolve_prompt(prompt_file)
-    source = _load_documents(cfg["documents"])
-    return asyncio.run(_generate_tweets_async(cfg, source, past_tweets))
 
 
 def generate_tweet_from_news(
@@ -187,36 +187,35 @@ def generate_tweet_from_news(
     source = _load_documents(cfg["documents"])
 
     system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
-    content = []
+    user_content = []
     if source:
-        content.append({
+        user_content.append({
             "type": "text",
-            "text": f"【参考資料】\n{source}",
+            "text": "【参考資料】\n" + source,
             "cache_control": {"type": "ephemeral"},
         })
-    content.append({
+    user_content.append({
         "type": "text",
         "text": (
-            f"以下のニュース記事をもとに、アカウントの思想・論調に合わせたツイートを{max_chars}文字以内で1件生成してください。\n"
+            "以下のニュース記事をもとに、アカウントの思想・論調に合わせたツイートを" + str(max_chars) + "文字以内で1件生成してください。\n"
             "URLは別途末尾に付与するため本文に含めないこと。\n"
-            f"必ず{max_chars}文字以内厳守。JSON配列で1件のみ返答。\n\n"
-            f"タイトル：{title}\n"
-            f"概要：{summary or '（概要なし）'}\n\n"
+            "必ず" + str(max_chars) + "文字以内厳守。JSON配列で1件のみ返答。\n\n"
+            "タイトル：" + title + "\n"
+            "概要：" + (summary or "（概要なし）") + "\n\n"
             '例: ["ツイート本文"]'
         ),
     })
 
-    message = sync_client.messages.create(
+    message = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=512,
         system=system,
-        messages=[{"role": "user", "content": content}],
+        messages=[{"role": "user", "content": user_content}],
     )
 
     text = message.content[0].text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
-
     try:
         tweets = json.loads(text)
         tweet = tweets[0] if tweets else ""
