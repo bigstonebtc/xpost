@@ -21,9 +21,9 @@ class TweetUpdate(BaseModel):
     content: str
 
 
-def _random_daytime_schedule() -> datetime:
+def _random_daytime_schedule(hours: int = 24) -> datetime:
     now_jst = datetime.now(JST)
-    end_window = now_jst + timedelta(hours=24)
+    end_window = now_jst + timedelta(hours=hours)
     slots = []
     t = now_jst.replace(second=0, microsecond=0) + timedelta(minutes=1)
     while t <= end_window:
@@ -80,13 +80,11 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
     mode = ns.schedule_mode if ns else "120min"
 
     if mode == "24h_daytime":
-        scheduled_at = _random_daytime_schedule()
+        scheduled_at = _random_daytime_schedule(24)
     elif mode == "72h":
-        delay_minutes = random.randint(1, 72 * 60)
-        scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+        scheduled_at = _random_daytime_schedule(72)
     elif mode == "120h":
-        delay_minutes = random.randint(1, 120 * 60)
-        scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+        scheduled_at = _random_daytime_schedule(120)
     else:
         delay_minutes = random.randint(1, 120)
         scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
