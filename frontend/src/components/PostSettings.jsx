@@ -15,17 +15,21 @@ const styles = {
 export default function PostSettings() {
   const [scheduleMode, setScheduleMode] = useState('120min')
   const [savedSettings, setSavedSettings] = useState(null)
+  const [dailyLimit, setDailyLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingLimit, setSavingLimit] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
+  const [limitMsg, setLimitMsg] = useState({ type: '', text: '' })
 
   const load = useCallback(async () => {
     try {
-      const data = await api.newsSettings()
-      if (data.general) {
-        setScheduleMode(data.general.schedule_mode || '120min')
-        setSavedSettings(data.general)
+      const [newsData, postingData] = await Promise.all([api.newsSettings(), api.getPostingSettings()])
+      if (newsData.general) {
+        setScheduleMode(newsData.general.schedule_mode || '120min')
+        setSavedSettings(newsData.general)
       }
+      setDailyLimit(postingData.daily_schedule_limit ?? 10)
     } catch (e) {
       setMsg({ type: 'err', text: e.message })
     } finally {
@@ -38,6 +42,28 @@ export default function PostSettings() {
   const flash = (type, text) => {
     setMsg({ type, text })
     setTimeout(() => setMsg({ type: '', text: '' }), 3000)
+  }
+
+  const flashLimit = (type, text) => {
+    setLimitMsg({ type, text })
+    setTimeout(() => setLimitMsg({ type: '', text: '' }), 3000)
+  }
+
+  const saveLimit = async () => {
+    const val = Number(dailyLimit)
+    if (!Number.isInteger(val) || val < 1) {
+      flashLimit('err', '1以上の整数を入力してください')
+      return
+    }
+    setSavingLimit(true)
+    try {
+      await api.updatePostingSettings(val)
+      flashLimit('ok', '保存しました ✓')
+    } catch (e) {
+      flashLimit('err', e.message)
+    } finally {
+      setSavingLimit(false)
+    }
   }
 
   const save = async () => {
@@ -74,6 +100,27 @@ export default function PostSettings() {
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>キュー設定</div>
+        <div style={{ padding: '12px 0', borderBottom: '1px solid #f0f0f0', marginBottom: '4px' }}>
+          <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: '500' }}>1日のSchedule投稿上限</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={dailyLimit}
+              onChange={e => setDailyLimit(e.target.value)}
+              style={{ width: '80px', padding: '7px 10px', border: '1px solid #aaa', borderRadius: '4px', fontSize: '14px' }}
+            />
+            <span style={{ fontSize: '13px', color: '#555' }}>件</span>
+          </div>
+          <p style={{ fontSize: '12px', color: '#888', marginTop: '6px', marginBottom: '0' }}>
+            ※ Post nowでの投稿はカウントされません
+          </p>
+          {limitMsg.text && <p style={limitMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{limitMsg.text}</p>}
+          <button style={styles.saveBtn} onClick={saveLimit} disabled={savingLimit}>
+            {savingLimit ? '保存中...' : '保存'}
+          </button>
+        </div>
         <div style={styles.radioRow}>
           {modes.map(m => (
             <label key={m.value} style={styles.radioLabel}>

@@ -10,6 +10,7 @@ from app.routers import settings as settings_router
 from app.routers import prompts as prompts_router
 from app.routers import images as images_router
 from app.routers import apikeys as apikeys_router
+from app.routers import posting as posting_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -156,6 +157,19 @@ def _migrate_news_sources_v2():
         db.close()
 
 
+def _seed_posting_settings():
+    from app.models.posting import PostingSettings
+
+    db = SessionLocal()
+    try:
+        if db.query(PostingSettings).count() == 0:
+            db.add(PostingSettings(daily_schedule_limit=10))
+            db.commit()
+            print("[seed] posting_settings を初期化しました")
+    finally:
+        db.close()
+
+
 def _cleanup_old_images():
     from pathlib import Path
     import time
@@ -176,6 +190,7 @@ async def lifespan(app: FastAPI):
     _migrate_news_settings_table()
     _seed_news_data()
     _migrate_news_sources_v2()
+    _seed_posting_settings()
     _recover_scheduled_tweets()
     _cleanup_old_images()
     from app.services.scheduler import setup_news_fetch_jobs
@@ -202,6 +217,7 @@ app.include_router(settings_router.router)
 app.include_router(prompts_router.router)
 app.include_router(images_router.router)
 app.include_router(apikeys_router.router)
+app.include_router(posting_router.router)
 
 
 @app.get("/health")

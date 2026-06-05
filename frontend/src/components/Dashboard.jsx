@@ -38,8 +38,18 @@ export default function Dashboard() {
         <div style={styles.value}>{stats.queue_count}</div>
       </div>
       <div style={styles.card}>
-        <div style={styles.label}>投稿予定件数</div>
+        <div style={styles.label}>投稿予定件数（合計）</div>
         <div style={styles.value}>{stats.scheduled_count}</div>
+        <div style={styles.subRows}>
+          <div style={styles.subRow}>
+            <span style={styles.subLabel}>今日のSchedule</span>
+            <span style={styles.subValue}>{stats.today_scheduled} / {stats.daily_schedule_limit}件</span>
+          </div>
+          <div style={styles.subRow}>
+            <span style={styles.subLabel}>明日のSchedule</span>
+            <span style={styles.subValue}>{stats.tomorrow_scheduled} / {stats.daily_schedule_limit}件</span>
+          </div>
+        </div>
       </div>
 
       <div style={styles.card}>

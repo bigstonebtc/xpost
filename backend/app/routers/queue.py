@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.tweet import Tweet, TweetStatus
+from app.models.posting import PostingSettings
 from app.services.scheduler import schedule_tweet
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -20,6 +21,23 @@ JST = ZoneInfo("Asia/Tokyo")
 
 class TweetUpdate(BaseModel):
     content: str
+
+
+def _find_available_datetime(base_dt: datetime, daily_limit: int, db: Session) -> datetime:
+    """daily_limit 未満のスケジュール件数になる日を探して base_dt の時刻で返す"""
+    candidate = base_dt
+    while True:
+        day_jst = candidate.astimezone(JST).date()
+        day_start = datetime(day_jst.year, day_jst.month, day_jst.day, tzinfo=JST).astimezone(timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        count = db.query(Tweet).filter(
+            Tweet.status == TweetStatus.scheduled,
+            Tweet.scheduled_at >= day_start,
+            Tweet.scheduled_at < day_end,
+        ).count()
+        if count < daily_limit:
+            return candidate
+        candidate += timedelta(days=1)
 
 
 def _random_daytime_schedule(hours: int = 24) -> datetime:
@@ -85,14 +103,18 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
     mode = ns.schedule_mode if ns else "120min"
 
     if mode == "24h_daytime":
-        scheduled_at = _random_daytime_schedule(24)
+        base_dt = _random_daytime_schedule(24)
     elif mode == "72h":
-        scheduled_at = _random_daytime_schedule(72)
+        base_dt = _random_daytime_schedule(72)
     elif mode == "120h":
-        scheduled_at = _random_daytime_schedule(120)
+        base_dt = _random_daytime_schedule(120)
     else:
         delay_minutes = random.randint(1, 120)
-        scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+        base_dt = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+
+    ps = db.query(PostingSettings).first()
+    daily_limit = ps.daily_schedule_limit if ps else 10
+    scheduled_at = _find_available_datetime(base_dt, daily_limit, db)
 
     tweet.status = TweetStatus.scheduled
     tweet.scheduled_at = scheduled_at

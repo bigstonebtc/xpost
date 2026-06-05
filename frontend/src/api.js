@@ -81,6 +81,9 @@ export const api = {
     })
   },
   deleteImage: (tweetId) => request('DELETE', `/images/${tweetId}`),
+  // 投稿設定
+  getPostingSettings: () => request('GET', '/settings/posting/'),
+  updatePostingSettings: (daily_schedule_limit) => request('PUT', '/settings/posting/', { daily_schedule_limit }),
   // APIキー設定
   getApiKeys: () => request('GET', '/settings/apikeys'),
   getApiKeysRaw: () => request('GET', '/settings/apikeys/raw'),
