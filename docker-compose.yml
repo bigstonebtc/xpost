@@ -22,6 +22,7 @@ services:
       - ./data:/app/data:ro
       - ./tweetsource:/app/tweetsource:ro
       - ./conf/env.conf:/app/conf/env.conf
+      - ./conf/prompts:/app/conf/prompts
       - ./prompts:/app/prompts
       - ./documents:/app/documents:ro
 

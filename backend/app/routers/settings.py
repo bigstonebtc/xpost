@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.news import NewsSource, FetchSchedule, NewsSettings
+from app.services.news_fetcher import RELEVANCE_PROMPT_PATH, DEFAULT_PROMPT
 
 router = APIRouter(prefix="/settings/news", tags=["settings"])
 
@@ -46,10 +48,23 @@ def get_news_settings(db: Session = Depends(get_db), _=Depends(get_current_user)
     sources = db.query(NewsSource).order_by(NewsSource.id).all()
     schedules = db.query(FetchSchedule).order_by(FetchSchedule.slot_number).all()
     ns = db.query(NewsSettings).first()
+    relevance_prompt = (
+        RELEVANCE_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        if RELEVANCE_PROMPT_PATH.exists()
+        else DEFAULT_PROMPT
+    )
+    general = None
+    if ns:
+        general = {
+            "fetch_limit_per_run": ns.fetch_limit_per_run,
+            "relevance_prompt": relevance_prompt,
+            "schedule_mode": ns.schedule_mode,
+            "news_prompt_file": ns.news_prompt_file,
+        }
     return {
         "sources": sources,
         "schedules": schedules,
-        "general": ns,
+        "general": general,
     }
 
 
@@ -125,11 +140,16 @@ def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends
     if body.schedule_mode not in ("120min", "24h_daytime", "72h", "120h"):
         raise HTTPException(status_code=400, detail="schedule_mode は '120min' / '24h_daytime' / '72h' / '120h' を指定してください")
 
+    try:
+        RELEVANCE_PROMPT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        RELEVANCE_PROMPT_PATH.write_text(body.relevance_prompt, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"プロンプトファイルの書き込みに失敗しました: {e}")
+
     ns = db.query(NewsSettings).first()
     if not ns:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
     ns.fetch_limit_per_run = body.fetch_limit_per_run
-    ns.relevance_prompt = body.relevance_prompt
     ns.schedule_mode = body.schedule_mode
     ns.news_prompt_file = body.news_prompt_file or "news_comment.prompt"
     db.commit()
