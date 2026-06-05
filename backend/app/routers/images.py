@@ -76,7 +76,7 @@ def delete_image(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_cur
 
 
 @router.get("/preview/{filename}")
-def preview_image(filename: str, _=Depends(get_current_user)):
+def preview_image(filename: str):
     filename = Path(filename).name  # パストラバーサル防止
     path = IMAGES_DIR / filename
     if not path.exists():
