@@ -1,5 +1,6 @@
 import random
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,11 +59,15 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
     try:
-        x_id = _post_to_x(tweet.content)
+        image_path = tweet.image_path
+        x_id = _post_to_x(tweet.content, image_path)
         tweet.status = TweetStatus.posted
         tweet.posted_at = datetime.now(timezone.utc)
         tweet.x_tweet_id = x_id
+        tweet.image_path = None
         db.commit()
+        if image_path:
+            Path(image_path).unlink(missing_ok=True)
         return {"ok": True, "x_tweet_id": x_id}
     except Exception as e:
         db.rollback()
@@ -105,8 +110,12 @@ def discard_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_cu
     ).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+    image_path = tweet.image_path
     tweet.status = TweetStatus.discarded
+    tweet.image_path = None
     db.commit()
+    if image_path:
+        Path(image_path).unlink(missing_ok=True)
     return {"ok": True}
 
 

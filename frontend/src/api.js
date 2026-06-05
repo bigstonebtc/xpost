@@ -63,6 +63,18 @@ export const api = {
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
   newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file) =>
     request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file }),
+  // 画像
+  uploadImage: (tweetId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('tweet_id', String(tweetId))
+    return fetch(`${BASE}/images/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.detail || 'エラー') }))
+  },
+  deleteImage: (tweetId) => request('DELETE', `/images/${tweetId}`),
   // プロンプト管理
   listPrompts: () => request('GET', '/prompts/'),
   getPrompt: (filename) => request('GET', `/prompts/${filename}`),

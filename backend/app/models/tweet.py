@@ -24,3 +24,4 @@ class Tweet(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     source_type = Column(String(20), default="manual", nullable=True)
     news_item_id = Column(Integer, ForeignKey("news_items.id"), nullable=True)
+    image_path = Column(String(500), nullable=True)

@@ -8,6 +8,7 @@ from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
 from app.routers import prompts as prompts_router
+from app.routers import images as images_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -40,6 +41,7 @@ def _migrate_tweets_table():
         for col, definition in [
             ("source_type", "VARCHAR(20) DEFAULT 'manual'"),
             ("news_item_id", "INTEGER"),
+            ("image_path", "VARCHAR(500)"),
         ]:
             result = conn.execute(text(
                 "SELECT column_name FROM information_schema.columns "
@@ -153,6 +155,19 @@ def _migrate_news_sources_v2():
         db.close()
 
 
+def _cleanup_old_images():
+    from pathlib import Path
+    import time
+    images_dir = Path("/tmp/xpost_images")
+    if not images_dir.exists():
+        return
+    cutoff = time.time() - 86400
+    for f in images_dir.iterdir():
+        if f.is_file() and f.stat().st_mtime < cutoff:
+            f.unlink(missing_ok=True)
+            print(f"[cleanup] 古い一時画像を削除: {f.name}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -161,6 +176,7 @@ async def lifespan(app: FastAPI):
     _seed_news_data()
     _migrate_news_sources_v2()
     _recover_scheduled_tweets()
+    _cleanup_old_images()
     from app.services.scheduler import setup_news_fetch_jobs
     setup_news_fetch_jobs()
     yield
@@ -183,6 +199,7 @@ app.include_router(history.router)
 app.include_router(news_router.router)
 app.include_router(settings_router.router)
 app.include_router(prompts_router.router)
+app.include_router(images_router.router)
 
 
 @app.get("/health")
