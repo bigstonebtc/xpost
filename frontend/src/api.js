@@ -57,7 +57,9 @@ export const api = {
   newsClearAiSkipped: () => request('POST', '/news/clear-ai-skipped'),
   // ニュース設定
   newsSettings: () => request('GET', '/settings/news/'),
-  newsUpdateSource: (id, is_enabled, url) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url }),
+  newsAddSource: (name, url, category) => request('POST', '/settings/news/sources', { name, url, category }),
+  newsUpdateSource: (id, is_enabled, url, name) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url, name }),
+  newsDeleteSource: (id) => request('DELETE', `/settings/news/sources/${id}`),
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
   newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file) =>
     request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file }),

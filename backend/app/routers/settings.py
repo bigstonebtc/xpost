@@ -11,9 +11,17 @@ from app.models.news import NewsSource, FetchSchedule, NewsSettings
 router = APIRouter(prefix="/settings/news", tags=["settings"])
 
 
+class SourceCreate(BaseModel):
+    name: str
+    url: str
+    category: str = "その他"
+    is_enabled: bool = True
+
+
 class SourceUpdate(BaseModel):
     is_enabled: bool
     url: Optional[str] = None
+    name: Optional[str] = None
 
 
 class ScheduleSlot(BaseModel):
@@ -45,6 +53,22 @@ def get_news_settings(db: Session = Depends(get_db), _=Depends(get_current_user)
     }
 
 
+@router.post("/sources")
+def create_source(body: SourceCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    name = body.name.strip()
+    url = body.url.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="名前を入力してください")
+    if not url:
+        raise HTTPException(status_code=400, detail="URLを入力してください")
+    source = NewsSource(name=name, url=url, category=body.category.strip() or "その他",
+                        is_enabled=body.is_enabled, is_preset=False)
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return source
+
+
 @router.put("/sources/{source_id}")
 def update_source(source_id: int, body: SourceUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     source = db.query(NewsSource).filter(NewsSource.id == source_id).first()
@@ -56,6 +80,23 @@ def update_source(source_id: int, body: SourceUpdate, db: Session = Depends(get_
         if not body.url:
             raise HTTPException(status_code=400, detail="URLを入力してください")
         source.url = body.url
+    if body.name is not None:
+        body.name = body.name.strip()
+        if not body.name:
+            raise HTTPException(status_code=400, detail="名前を入力してください")
+        source.name = body.name
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/sources/{source_id}")
+def delete_source(source_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    source = db.query(NewsSource).filter(NewsSource.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="ソースが見つかりません")
+    if source.is_preset:
+        raise HTTPException(status_code=403, detail="プリセットソースは削除できません")
+    db.delete(source)
     db.commit()
     return {"ok": True}
 
