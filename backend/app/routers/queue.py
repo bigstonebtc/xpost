@@ -42,7 +42,7 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
         db.query(Tweet)
         .filter(Tweet.status.in_([TweetStatus.queued, TweetStatus.scheduled]))
         .order_by(
-            case((Tweet.status == TweetStatus.scheduled, 0), else_=1),
+            case((Tweet.status == TweetStatus.queued, 0), else_=1),
             nulls_last(asc(Tweet.scheduled_at)),
             Tweet.id.asc()
         )
