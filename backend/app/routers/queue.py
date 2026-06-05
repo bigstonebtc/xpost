@@ -37,11 +37,13 @@ def _random_daytime_schedule() -> datetime:
 
 @router.get("/")
 def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from sqlalchemy import asc, nulls_last
     tweets = (
         db.query(Tweet)
         .filter(Tweet.status.in_([TweetStatus.queued, TweetStatus.scheduled]))
         .order_by(
-            case((Tweet.status == TweetStatus.scheduled, 1), else_=0),
+            case((Tweet.status == TweetStatus.scheduled, 0), else_=1),
+            nulls_last(asc(Tweet.scheduled_at)),
             Tweet.id.asc()
         )
         .all()
