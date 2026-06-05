@@ -71,15 +71,6 @@ def _migrate_news_settings_table():
                 print(f"[migration] news_settings.{col} を追加しました")
 
 
-_DEFAULT_RELEVANCE_PROMPT = (
-    "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
-    "投稿素材として関連性があるか判定してください。\n\n"
-    "タイトル：{title}\n"
-    "概要：{summary}\n\n"
-    '以下のJSONのみ返答：\n{"relevant": true/false}'
-)
-
-
 def _seed_news_data():
     from app.models.news import NewsSource, FetchSchedule, NewsSettings
 
@@ -107,7 +98,7 @@ def _seed_news_data():
             print("[seed] fetch_schedules を初期化しました")
 
         if db.query(NewsSettings).count() == 0:
-            db.add(NewsSettings(fetch_limit_per_run=20, relevance_prompt=_DEFAULT_RELEVANCE_PROMPT))
+            db.add(NewsSettings(fetch_limit_per_run=20))
             print("[seed] news_settings を初期化しました")
 
         db.commit()
