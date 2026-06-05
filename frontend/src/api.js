@@ -59,6 +59,14 @@ export const api = {
   newsSettings: () => request('GET', '/settings/news/'),
   newsUpdateSource: (id, is_enabled, url) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url }),
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
-  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, schedule_mode) =>
-    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, schedule_mode }),
+  newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file) =>
+    request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file }),
+  // プロンプト管理
+  listPrompts: () => request('GET', '/prompts/'),
+  getPrompt: (filename) => request('GET', `/prompts/${filename}`),
+  createPrompt: (body) => request('POST', '/prompts/', body),
+  updatePrompt: (filename, body) => request('PUT', `/prompts/${filename}`, body),
+  deletePrompt: (filename) => request('DELETE', `/prompts/${filename}`),
+  listDocuments: () => request('GET', '/prompts/documents/list'),
+  generateWithPrompt: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
 }

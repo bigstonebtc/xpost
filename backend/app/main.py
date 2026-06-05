@@ -7,6 +7,7 @@ from app.database import engine, Base, SessionLocal
 from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
+from app.routers import prompts as prompts_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -52,14 +53,18 @@ def _migrate_tweets_table():
 
 def _migrate_news_settings_table():
     with engine.connect() as conn:
-        result = conn.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='news_settings' AND column_name='schedule_mode'"
-        ))
-        if not result.fetchone():
-            conn.execute(text("ALTER TABLE news_settings ADD COLUMN schedule_mode VARCHAR(20) DEFAULT '120min'"))
-            conn.commit()
-            print("[migration] news_settings.schedule_mode を追加しました")
+        for col, definition in [
+            ("schedule_mode", "VARCHAR(20) DEFAULT '120min'"),
+            ("news_prompt_file", "VARCHAR(255) DEFAULT 'news_comment.prompt'"),
+        ]:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='news_settings' AND column_name=:col"
+            ), {"col": col})
+            if not result.fetchone():
+                conn.execute(text(f"ALTER TABLE news_settings ADD COLUMN {col} {definition}"))
+                conn.commit()
+                print(f"[migration] news_settings.{col} を追加しました")
 
 
 _DEFAULT_RELEVANCE_PROMPT = (
@@ -131,6 +136,7 @@ app.include_router(queue.router)
 app.include_router(history.router)
 app.include_router(news_router.router)
 app.include_router(settings_router.router)
+app.include_router(prompts_router.router)
 
 
 @app.get("/health")

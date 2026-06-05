@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api'
 
+
 const styles = {
   section: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '20px', marginBottom: '20px' },
   sectionTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', paddingBottom: '10px', borderBottom: '1px solid #eee' },
@@ -33,19 +34,23 @@ export default function NewsSettings() {
   const [fetchLimit, setFetchLimit] = useState(20)
   const [prompt, setPrompt] = useState('')
   const [scheduleMode, setScheduleMode] = useState('120min')
+  const [newsPromptFile, setNewsPromptFile] = useState('news_comment.prompt')
+  const [availablePrompts, setAvailablePrompts] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
 
   const load = useCallback(async () => {
     try {
-      const data = await api.newsSettings()
+      const [data, promptList] = await Promise.all([api.newsSettings(), api.listPrompts()])
       setSources(data.sources)
       setSchedules(data.schedules)
+      setAvailablePrompts(promptList)
       if (data.general) {
         setFetchLimit(data.general.fetch_limit_per_run)
         setPrompt(data.general.relevance_prompt)
         setScheduleMode(data.general.schedule_mode || '120min')
+        setNewsPromptFile(data.general.news_prompt_file || 'news_comment.prompt')
       }
     } catch (e) {
       setMsg({ type: 'err', text: e.message })
@@ -108,7 +113,7 @@ export default function NewsSettings() {
     }
     setSaving(true)
     try {
-      await api.newsUpdateGeneral(fetchLimit, prompt, scheduleMode)
+      await api.newsUpdateGeneral(fetchLimit, prompt, scheduleMode, newsPromptFile)
       flash('ok', '保存しました')
     } catch (e) {
       flash('err', e.message)
@@ -155,6 +160,32 @@ export default function NewsSettings() {
               <div style={styles.radioDesc}>向こう24時間以内の朝7時〜夜8時の範囲でランダムなタイミングで投稿</div>
             </div>
           </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name="scheduleMode"
+              value="72h"
+              checked={scheduleMode === '72h'}
+              onChange={() => setScheduleMode('72h')}
+            />
+            <div>
+              <div>72時間以内にランダム投稿</div>
+              <div style={styles.radioDesc}>Scheduleボタンを押してから最大72時間以内にランダムなタイミングで投稿</div>
+            </div>
+          </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name="scheduleMode"
+              value="120h"
+              checked={scheduleMode === '120h'}
+              onChange={() => setScheduleMode('120h')}
+            />
+            <div>
+              <div>120時間以内にランダム投稿</div>
+              <div style={styles.radioDesc}>Scheduleボタンを押してから最大120時間以内にランダムなタイミングで投稿</div>
+            </div>
+          </label>
         </div>
         <button style={styles.saveBtn} onClick={saveGeneral} disabled={saving}>保存</button>
       </div>
@@ -194,6 +225,18 @@ export default function NewsSettings() {
           <span style={styles.limitLabel}>1回あたりの取得件数上限</span>
           <select style={styles.select} value={fetchLimit} onChange={e => setFetchLimit(Number(e.target.value))}>
             {LIMIT_OPTIONS.map(n => <option key={n} value={n}>{n}件</option>)}
+          </select>
+        </div>
+
+        <div style={styles.limitRow}>
+          <span style={styles.limitLabel}>ニュース生成に使用するプロンプト</span>
+          <select style={styles.select} value={newsPromptFile} onChange={e => setNewsPromptFile(e.target.value)}>
+            {availablePrompts.length === 0
+              ? <option value="news_comment.prompt">news_comment.prompt</option>
+              : availablePrompts.map(p => (
+                <option key={p.filename} value={p.filename}>{p.name}</option>
+              ))
+            }
           </select>
         </div>
 
