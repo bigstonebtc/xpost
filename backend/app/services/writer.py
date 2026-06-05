@@ -7,7 +7,6 @@ import anthropic
 
 from app.config import settings
 
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 PROMPTS_DIR = Path("/app/prompts")
 DOCUMENTS_DIR = Path("/app/documents")
@@ -105,10 +104,12 @@ def _pick(lst: list, n: int) -> list[str]:
 
 
 def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
-    """同期で Claude API を1回呼び、ツイート1件を返す。"""
-    message = client.messages.create(
+    """同期で Claude API を1回呼び、ツイート1件を返す。
+    スレッドセーフのためクライアントをスレッドごとに生成する。"""
+    _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    message = _client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=256,
+        max_tokens=512,
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],
     )
@@ -119,6 +120,7 @@ def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
         items = json.loads(text)
         return (items[0] if items else "")[:140]
     except Exception:
+        # JSONパース失敗時はテキストをそのまま使う
         return text[:140]
 
 
@@ -206,7 +208,8 @@ def generate_tweet_from_news(
         ),
     })
 
-    message = client.messages.create(
+    _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    message = _client.messages.create(
         model="claude-opus-4-7",
         max_tokens=512,
         system=system,
