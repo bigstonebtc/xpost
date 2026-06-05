@@ -27,8 +27,22 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
   const formatScheduled = (iso) => {
     if (!iso) return ''
-    const diff = Math.round((new Date(iso) - Date.now()) / 60000)
-    return diff > 0 ? `約${diff}分後に投稿予定` : '投稿間近'
+    const target = new Date(iso)
+    const diffMs = target - Date.now()
+    if (diffMs <= 0) return '投稿間近'
+    const totalMin = Math.floor(diffMs / 60000)
+    const days = Math.floor(totalMin / 1440)
+    const hours = Math.floor((totalMin % 1440) / 60)
+    const mins = totalMin % 60
+    const dd = String(days).padStart(2, '0')
+    const hh = String(hours).padStart(2, '0')
+    const mm = String(mins).padStart(2, '0')
+    const y = target.getFullYear()
+    const mo = target.getMonth() + 1
+    const d = target.getDate()
+    const th = String(target.getHours()).padStart(2, '0')
+    const tm = String(target.getMinutes()).padStart(2, '0')
+    return `${y}-${mo}-${d} ${th}:${tm} (${dd} d ${hh} h ${mm} m) 投稿予定`
   }
 
   const handlePost = async () => {
