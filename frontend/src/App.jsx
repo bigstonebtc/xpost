@@ -8,6 +8,7 @@ import History from './components/History'
 import News from './components/News'
 import NewsSettings from './components/NewsSettings'
 import ApiKeySettings from './components/ApiKeySettings'
+import PostSettings from './components/PostSettings'
 
 const styles = {
   nav: { background: '#1a1a2e', color: '#fff', padding: '12px 16px', display: 'flex', gap: '20px', alignItems: 'center' },
@@ -68,6 +69,9 @@ function SettingsLayout() {
     <div>
       <div style={{ display: 'flex', gap: '4px', marginBottom: '0', borderBottom: '2px solid #1a1a2e' }}>
         <NavLink to="/settings" end style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>投稿設定</button>}
+        </NavLink>
+        <NavLink to="/settings/news" style={{ textDecoration: 'none' }}>
           {({ isActive }) => <button style={tabStyle(isActive)}>ニュース設定</button>}
         </NavLink>
         <NavLink to="/settings/api" style={{ textDecoration: 'none' }}>
@@ -76,7 +80,8 @@ function SettingsLayout() {
       </div>
       <div style={{ paddingTop: '16px' }}>
         <Routes>
-          <Route index element={<NewsSettings />} />
+          <Route index element={<PostSettings />} />
+          <Route path="news" element={<NewsSettings />} />
           <Route path="api" element={<ApiKeySettings />} />
         </Routes>
       </div>
