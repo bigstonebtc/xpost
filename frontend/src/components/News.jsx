@@ -81,8 +81,10 @@ export default function News() {
     try {
       const data = await api.newsList()
       setItems(data)
+      return data.length
     } catch (e) {
       setErr(e.message)
+      return 0
     } finally {
       setLoading(false)
     }
@@ -93,13 +95,20 @@ export default function News() {
   const handleFetch = async () => {
     setFetching(true)
     setErr('')
+    const prevCount = items.length
     try {
       await api.newsFetch()
-      // バックグラウンド処理のため30秒後に自動リロード
-      setTimeout(async () => {
-        await load()
-        setFetching(false)
-      }, 30000)
+      let attempts = 0
+      const poll = async () => {
+        attempts++
+        const count = await load()
+        if (count > prevCount || attempts >= 10) {
+          setFetching(false)
+        } else {
+          setTimeout(poll, 30000)
+        }
+      }
+      setTimeout(poll, 30000)
     } catch (e) {
       setErr(e.message)
       setFetching(false)
