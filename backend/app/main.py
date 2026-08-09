@@ -195,7 +195,12 @@ app = FastAPI(title="xpost API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:3000",
+        "http://160.251.142.37",
+        "https://160.251.142.37",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
