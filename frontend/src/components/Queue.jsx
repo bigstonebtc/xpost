@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 
@@ -20,6 +20,12 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(tweet.content)
   const [loading, setLoading] = useState(false)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(() => {
+    if (!tweet.image_path) return null
+    const filename = tweet.image_path.split('/').pop()
+    return `/xpost/api/images/preview/${filename}`
+  })
+  const fileInputRef = useRef(null)
 
   const isScheduled = tweet.status === 'scheduled'
   const charCount = editText.length
@@ -83,8 +89,47 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     setEditing(false)
   }
 
+  const handlePicClick = () => fileInputRef.current.click()
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = ''
+    if (!file) return
+    const ALLOWED = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if (!ALLOWED.includes(file.type)) {
+      alert('JPEG / PNG / GIF / WEBP のみ対応しています')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('ファイルサイズは5MB以内にしてください')
+      return
+    }
+    setLoading(true)
+    try {
+      const result = await api.uploadImage(tweet.id, file)
+      setImagePreviewUrl(result.preview_url)
+    } catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const handleDeleteImage = async () => {
+    setLoading(true)
+    try {
+      await api.deleteImage(tweet.id)
+      setImagePreviewUrl(null)
+    } catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
   return (
     <div style={s.card}>
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        style={{ display: 'none' }}
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+      />
       {editing ? (
         <>
           <textarea
@@ -103,6 +148,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
         <>
           <div style={s.text}>{tweet.content}</div>
           <div style={s.meta}>{tweet.content.length}文字</div>
+          {imagePreviewUrl && (
+            <img
+              src={imagePreviewUrl}
+              alt="添付画像"
+              style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '8px' }}
+            />
+          )}
           {isScheduled ? (
             <>
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
@@ -114,6 +166,14 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             <div style={s.btnRow}>
               <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
               <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
+              {imagePreviewUrl ? (
+                <>
+                  <button style={s.btn('#805ad5')} onClick={handlePicClick} disabled={loading}>pic差替</button>
+                  <button style={s.btn('#e53e3e')} onClick={handleDeleteImage} disabled={loading}>pic削除</button>
+                </>
+              ) : (
+                <button style={s.btn('#805ad5')} onClick={handlePicClick} disabled={loading}>pic</button>
+              )}
               <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
               <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
             </div>

@@ -7,6 +7,8 @@ import TweetCreate from './components/TweetCreate'
 import History from './components/History'
 import News from './components/News'
 import NewsSettings from './components/NewsSettings'
+import ApiKeySettings from './components/ApiKeySettings'
+import PostSettings from './components/PostSettings'
 
 const styles = {
   nav: { background: '#1a1a2e', color: '#fff', padding: '12px 16px', display: 'flex', gap: '20px', alignItems: 'center' },
@@ -46,11 +48,46 @@ function Login({ onLogin }) {
   )
 }
 
-// NavLinkのactiveStyle用
 const navLinkStyle = ({ isActive }) => ({
   ...styles.navLink,
   ...(isActive ? styles.navLinkActive : {}),
 })
+
+const tabStyle = (active) => ({
+  padding: '8px 18px',
+  background: active ? '#1a1a2e' : '#f0f0f0',
+  color: active ? '#fff' : '#555',
+  border: 'none',
+  borderRadius: '6px 6px 0 0',
+  cursor: 'pointer',
+  fontSize: '14px',
+  fontWeight: active ? 'bold' : 'normal',
+})
+
+function SettingsLayout() {
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '0', borderBottom: '2px solid #1a1a2e' }}>
+        <NavLink to="/settings" end style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>投稿設定</button>}
+        </NavLink>
+        <NavLink to="/settings/news" style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>ニュース設定</button>}
+        </NavLink>
+        <NavLink to="/settings/api" style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>API設定</button>}
+        </NavLink>
+      </div>
+      <div style={{ paddingTop: '16px' }}>
+        <Routes>
+          <Route index element={<PostSettings />} />
+          <Route path="news" element={<NewsSettings />} />
+          <Route path="api" element={<ApiKeySettings />} />
+        </Routes>
+      </div>
+    </div>
+  )
+}
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
@@ -77,7 +114,7 @@ export default function App() {
           <Route path="/create" element={<TweetCreate />} />
           <Route path="/news" element={<News />} />
           <Route path="/news-settings" element={<Navigate to="/settings" />} />
-          <Route path="/settings" element={<NewsSettings />} />
+          <Route path="/settings/*" element={<SettingsLayout />} />
           <Route path="/history" element={<History />} />
           <Route path="*" element={<Navigate to="/queue" />} />
         </Routes>

@@ -5,6 +5,7 @@ import socket
 import traceback
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Optional
 
 import feedparser
@@ -14,6 +15,8 @@ from app.config import settings
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
+RELEVANCE_PROMPT_PATH = Path("/app/conf/prompts/relevance.conf")
+
 DEFAULT_PROMPT = (
     "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
     "投稿素材として関連性があるか判定してください。\n\n"
@@ -21,6 +24,12 @@ DEFAULT_PROMPT = (
     "概要：{summary}\n\n"
     '以下のJSONのみ返答：\n{"relevant": true/false}'
 )
+
+
+def load_relevance_prompt() -> str:
+    if RELEVANCE_PROMPT_PATH.exists():
+        return RELEVANCE_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    return DEFAULT_PROMPT
 
 
 class _HTMLStripper(HTMLParser):
@@ -87,7 +96,7 @@ def fetch_and_process() -> dict:
 
         ns = db.query(NewsSettings).first()
         total_limit = ns.fetch_limit_per_run if ns else 20
-        prompt_template = ns.relevance_prompt if ns else DEFAULT_PROMPT
+        prompt_template = load_relevance_prompt()
         news_prompt_file = ns.news_prompt_file if ns else "news_comment.prompt"
 
         limit_per_source = math.ceil(total_limit / len(sources))
@@ -100,11 +109,19 @@ def fetch_and_process() -> dict:
                 old_timeout = socket.getdefaulttimeout()
                 socket.setdefaulttimeout(15)
                 try:
-                    feed = feedparser.parse(source.url)
+                    feed = feedparser.parse(
+                        source.url,
+                        agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    )
                 finally:
                     socket.setdefaulttimeout(old_timeout)
             except Exception as e:
                 print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
+                continue
+
+            status = getattr(feed, "status", None)
+            if status and status >= 400:
+                print(f"[news_fetcher] RSS HTTP {status} — スキップ: {source.name} ({source.url})")
                 continue
 
             count_this_source = 0

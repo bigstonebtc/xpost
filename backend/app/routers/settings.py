@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,13 +8,22 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.news import NewsSource, FetchSchedule, NewsSettings
+from app.services.news_fetcher import RELEVANCE_PROMPT_PATH, DEFAULT_PROMPT
 
 router = APIRouter(prefix="/settings/news", tags=["settings"])
+
+
+class SourceCreate(BaseModel):
+    name: str
+    url: str
+    category: str = "その他"
+    is_enabled: bool = True
 
 
 class SourceUpdate(BaseModel):
     is_enabled: bool
     url: Optional[str] = None
+    name: Optional[str] = None
 
 
 class ScheduleSlot(BaseModel):
@@ -38,11 +48,40 @@ def get_news_settings(db: Session = Depends(get_db), _=Depends(get_current_user)
     sources = db.query(NewsSource).order_by(NewsSource.id).all()
     schedules = db.query(FetchSchedule).order_by(FetchSchedule.slot_number).all()
     ns = db.query(NewsSettings).first()
+    relevance_prompt = (
+        RELEVANCE_PROMPT_PATH.read_text(encoding="utf-8").strip()
+        if RELEVANCE_PROMPT_PATH.exists()
+        else DEFAULT_PROMPT
+    )
+    general = None
+    if ns:
+        general = {
+            "fetch_limit_per_run": ns.fetch_limit_per_run,
+            "relevance_prompt": relevance_prompt,
+            "schedule_mode": ns.schedule_mode,
+            "news_prompt_file": ns.news_prompt_file,
+        }
     return {
         "sources": sources,
         "schedules": schedules,
-        "general": ns,
+        "general": general,
     }
+
+
+@router.post("/sources")
+def create_source(body: SourceCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    name = body.name.strip()
+    url = body.url.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="名前を入力してください")
+    if not url:
+        raise HTTPException(status_code=400, detail="URLを入力してください")
+    source = NewsSource(name=name, url=url, category=body.category.strip() or "その他",
+                        is_enabled=body.is_enabled, is_preset=False)
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+    return source
 
 
 @router.put("/sources/{source_id}")
@@ -56,6 +95,23 @@ def update_source(source_id: int, body: SourceUpdate, db: Session = Depends(get_
         if not body.url:
             raise HTTPException(status_code=400, detail="URLを入力してください")
         source.url = body.url
+    if body.name is not None:
+        body.name = body.name.strip()
+        if not body.name:
+            raise HTTPException(status_code=400, detail="名前を入力してください")
+        source.name = body.name
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/sources/{source_id}")
+def delete_source(source_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    source = db.query(NewsSource).filter(NewsSource.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="ソースが見つかりません")
+    if source.is_preset:
+        raise HTTPException(status_code=403, detail="プリセットソースは削除できません")
+    db.delete(source)
     db.commit()
     return {"ok": True}
 
@@ -84,11 +140,16 @@ def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends
     if body.schedule_mode not in ("120min", "24h_daytime", "72h", "120h"):
         raise HTTPException(status_code=400, detail="schedule_mode は '120min' / '24h_daytime' / '72h' / '120h' を指定してください")
 
+    try:
+        RELEVANCE_PROMPT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        RELEVANCE_PROMPT_PATH.write_text(body.relevance_prompt, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"プロンプトファイルの書き込みに失敗しました: {e}")
+
     ns = db.query(NewsSettings).first()
     if not ns:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
     ns.fetch_limit_per_run = body.fetch_limit_per_run
-    ns.relevance_prompt = body.relevance_prompt
     ns.schedule_mode = body.schedule_mode
     ns.news_prompt_file = body.news_prompt_file or "news_comment.prompt"
     db.commit()

@@ -57,10 +57,38 @@ export const api = {
   newsClearAiSkipped: () => request('POST', '/news/clear-ai-skipped'),
   // ニュース設定
   newsSettings: () => request('GET', '/settings/news/'),
-  newsUpdateSource: (id, is_enabled, url) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url }),
+  newsAddSource: (name, url, category) => request('POST', '/settings/news/sources', { name, url, category }),
+  newsUpdateSource: (id, is_enabled, url, name) => request('PUT', `/settings/news/sources/${id}`, { is_enabled, url, name }),
+  newsDeleteSource: (id) => request('DELETE', `/settings/news/sources/${id}`),
   newsUpdateSchedule: (slots) => request('PUT', '/settings/news/schedule', { slots }),
   newsUpdateGeneral: (fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file) =>
     request('PUT', '/settings/news/general', { fetch_limit_per_run, relevance_prompt, schedule_mode, news_prompt_file }),
+  // 画像
+  uploadImage: (tweetId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('tweet_id', String(tweetId))
+    return fetch(`${BASE}/images/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(async r => {
+      if (r.ok) return r.json()
+      const text = await r.text()
+      let msg = `アップロードエラー (${r.status})`
+      try { msg = JSON.parse(text).detail || msg } catch {}
+      throw new Error(msg)
+    })
+  },
+  deleteImage: (tweetId) => request('DELETE', `/images/${tweetId}`),
+  // 投稿設定
+  getPostingSettings: () => request('GET', '/settings/posting/'),
+  updatePostingSettings: (daily_schedule_limit) => request('PUT', '/settings/posting/', { daily_schedule_limit }),
+  // APIキー設定
+  getApiKeys: () => request('GET', '/settings/apikeys'),
+  getApiKeysRaw: () => request('GET', '/settings/apikeys/raw'),
+  updateApiKeys: (keys) => request('PUT', '/settings/apikeys', keys),
+  restartApp: () => request('POST', '/settings/restart'),
   // プロンプト管理
   listPrompts: () => request('GET', '/prompts/'),
   getPrompt: (filename) => request('GET', `/prompts/${filename}`),

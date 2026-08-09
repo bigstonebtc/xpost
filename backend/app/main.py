@@ -8,6 +8,9 @@ from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
 from app.routers import prompts as prompts_router
+from app.routers import images as images_router
+from app.routers import apikeys as apikeys_router
+from app.routers import posting as posting_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -40,6 +43,7 @@ def _migrate_tweets_table():
         for col, definition in [
             ("source_type", "VARCHAR(20) DEFAULT 'manual'"),
             ("news_item_id", "INTEGER"),
+            ("image_path", "VARCHAR(500)"),
         ]:
             result = conn.execute(text(
                 "SELECT column_name FROM information_schema.columns "
@@ -67,32 +71,26 @@ def _migrate_news_settings_table():
                 print(f"[migration] news_settings.{col} を追加しました")
 
 
-_DEFAULT_RELEVANCE_PROMPT = (
-    "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
-    "投稿素材として関連性があるか判定してください。\n\n"
-    "タイトル：{title}\n"
-    "概要：{summary}\n\n"
-    '以下のJSONのみ返答：\n{"relevant": true/false}'
-)
-
-
 def _seed_news_data():
     from app.models.news import NewsSource, FetchSchedule, NewsSettings
 
     db = SessionLocal()
     try:
         if db.query(NewsSource).count() == 0:
+            # ===== 旧プリセット（一時無効化 / 復活可能） =====
+            # 以下のソースを復活させる場合は is_enabled=True に変更してください
             presets = [
-                ("NHK経済", "https://www.nhk.or.jp/rss/news/cat4.xml", "経済", True),
-                ("産経ニュース", "https://www.sankei.com/economy/rss/", "経済", True),
-                ("日経電子版（無料）", "https://www.nikkei.com/rss/news.rss", "経済・税制", True),
-                ("東洋経済オンライン", "https://toyokeizai.net/list/feed/rss", "経済", True),
+                ("NHK経済", "https://www.nhk.or.jp/rss/news/cat4.xml", "経済", False),
+                ("産経ニュース", "https://www.sankei.com/economy/rss/", "経済", False),
+                ("日経電子版（無料）", "https://www.nikkei.com/rss/news.rss", "経済・税制", False),
+                ("東洋経済オンライン", "https://toyokeizai.net/list/feed/rss", "経済", False),
                 ("Yahoo!ニュース経済", "https://news.yahoo.co.jp/rss/categories/business.xml", "経済", False),
-                ("財務省プレスリリース", "https://www.mof.go.jp/rss/", "税制", True),
+                ("財務省プレスリリース", "https://www.mof.go.jp/rss/", "税制", False),
             ]
             for name, url, category, enabled in presets:
-                db.add(NewsSource(name=name, url=url, category=category, is_enabled=enabled))
-            print("[seed] news_sources を初期化しました")
+                db.add(NewsSource(name=name, url=url, category=category, is_enabled=enabled, is_preset=True))
+            # ===== /旧プリセット =====
+            print("[seed] news_sources を初期化しました（旧プリセットは無効状態）")
 
         if db.query(FetchSchedule).count() == 0:
             for slot, hour, enabled in [(1, 7, True), (2, 12, True), (3, 17, True), (4, 21, False)]:
@@ -100,12 +98,80 @@ def _seed_news_data():
             print("[seed] fetch_schedules を初期化しました")
 
         if db.query(NewsSettings).count() == 0:
-            db.add(NewsSettings(fetch_limit_per_run=20, relevance_prompt=_DEFAULT_RELEVANCE_PROMPT))
+            db.add(NewsSettings(fetch_limit_per_run=20))
             print("[seed] news_settings を初期化しました")
 
         db.commit()
     finally:
         db.close()
+
+
+def _migrate_news_sources_v2():
+    """既存ソースを無効化し、Google News / はてなブックマークソースを追加する（冪等）"""
+    from app.models.news import NewsSource
+
+    db = SessionLocal()
+    try:
+        # 旧プリセット（is_preset=True）を全件無効化
+        db.query(NewsSource).filter(NewsSource.is_preset == True).update({"is_enabled": False})
+
+        # 新ソース（is_preset=False / ユーザー管理）を追加（重複チェックあり）
+        new_sources = [
+            ("Google News - 相続税・減税",
+             "https://news.google.com/rss/search?q=%E7%9B%B8%E7%B6%9A%E7%A8%8E+%E6%B8%9B%E7%A8%8E&hl=ja&gl=JP&ceid=JP:ja",
+             "経済"),
+            ("Google News - 資産課税・財産権",
+             "https://news.google.com/rss/search?q=%E8%B3%87%E7%94%A3%E8%AA%B2%E7%A8%8E+%E8%B2%A1%E7%94%A3%E6%A8%A9&hl=ja&gl=JP&ceid=JP:ja",
+             "経済"),
+            ("Google News - 規制緩和・既得権",
+             "https://news.google.com/rss/search?q=%E8%A6%8F%E5%88%B6%E7%B7%A9%E5%92%8C+%E6%97%A2%E5%BE%97%E6%A8%A9&hl=ja&gl=JP&ceid=JP:ja",
+             "経済"),
+            ("Google News - 増税・財政",
+             "https://news.google.com/rss/search?q=%E5%A2%97%E7%A8%8E+%E8%B2%A1%E6%94%BF&hl=ja&gl=JP&ceid=JP:ja",
+             "経済"),
+            ("はてなブックマーク - 経済",
+             "https://b.hatena.ne.jp/hotentry/economics.rss",
+             "経済"),
+            ("はてなブックマーク - 政治",
+             "https://b.hatena.ne.jp/hotentry/politics.rss",
+             "政治"),
+        ]
+        for name, url, category in new_sources:
+            exists = db.query(NewsSource).filter(NewsSource.name == name).first()
+            if not exists:
+                db.add(NewsSource(name=name, url=url, category=category,
+                                  is_enabled=True, is_preset=False))
+                print(f"[migrate_v2] ソース追加: {name}")
+
+        db.commit()
+    finally:
+        db.close()
+
+
+def _seed_posting_settings():
+    from app.models.posting import PostingSettings
+
+    db = SessionLocal()
+    try:
+        if db.query(PostingSettings).count() == 0:
+            db.add(PostingSettings(daily_schedule_limit=10))
+            db.commit()
+            print("[seed] posting_settings を初期化しました")
+    finally:
+        db.close()
+
+
+def _cleanup_old_images():
+    from pathlib import Path
+    import time
+    images_dir = Path("/tmp/xpost_images")
+    if not images_dir.exists():
+        return
+    cutoff = time.time() - 86400
+    for f in images_dir.iterdir():
+        if f.is_file() and f.stat().st_mtime < cutoff:
+            f.unlink(missing_ok=True)
+            print(f"[cleanup] 古い一時画像を削除: {f.name}")
 
 
 @asynccontextmanager
@@ -114,7 +180,10 @@ async def lifespan(app: FastAPI):
     _migrate_tweets_table()
     _migrate_news_settings_table()
     _seed_news_data()
+    _migrate_news_sources_v2()
+    _seed_posting_settings()
     _recover_scheduled_tweets()
+    _cleanup_old_images()
     from app.services.scheduler import setup_news_fetch_jobs
     setup_news_fetch_jobs()
     yield
@@ -137,6 +206,9 @@ app.include_router(history.router)
 app.include_router(news_router.router)
 app.include_router(settings_router.router)
 app.include_router(prompts_router.router)
+app.include_router(images_router.router)
+app.include_router(apikeys_router.router)
+app.include_router(posting_router.router)
 
 
 @app.get("/health")
