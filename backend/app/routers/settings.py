@@ -38,7 +38,7 @@ class ScheduleUpdate(BaseModel):
 
 class GeneralUpdate(BaseModel):
     fetch_limit_per_run: int
-    relevance_prompt: str
+    relevance_prompt: Optional[str] = None
     schedule_mode: str = "120min"
     news_prompt_file: Optional[str] = "news_comment.prompt"
 
@@ -133,18 +133,19 @@ def update_schedule(body: ScheduleUpdate, db: Session = Depends(get_db), _=Depen
 
 @router.put("/general")
 def update_general(body: GeneralUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    if "{title}" not in body.relevance_prompt or "{summary}" not in body.relevance_prompt:
-        raise HTTPException(status_code=400, detail="{title} と {summary} のプレースホルダーが必要です")
     if body.fetch_limit_per_run not in (20, 50, 100):
         raise HTTPException(status_code=400, detail="取得件数上限は 20 / 50 / 100 から選択してください")
     if body.schedule_mode not in ("120min", "24h_daytime", "72h", "120h"):
         raise HTTPException(status_code=400, detail="schedule_mode は '120min' / '24h_daytime' / '72h' / '120h' を指定してください")
 
-    try:
-        RELEVANCE_PROMPT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        RELEVANCE_PROMPT_PATH.write_text(body.relevance_prompt, encoding="utf-8")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"プロンプトファイルの書き込みに失敗しました: {e}")
+    if body.relevance_prompt is not None:
+        if "{title}" not in body.relevance_prompt or "{summary}" not in body.relevance_prompt:
+            raise HTTPException(status_code=400, detail="{title} と {summary} のプレースホルダーが必要です")
+        try:
+            RELEVANCE_PROMPT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            RELEVANCE_PROMPT_PATH.write_text(body.relevance_prompt, encoding="utf-8")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"プロンプトファイルの書き込みに失敗しました: {e}")
 
     ns = db.query(NewsSettings).first()
     if not ns:
