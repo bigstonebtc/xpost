@@ -1,4 +1,5 @@
 import random
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.logger import posting_logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.services.scheduler import schedule_tweet
@@ -78,7 +80,9 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
     try:
         image_path = tweet.image_path
+        started_at = time.monotonic()
         x_id = _post_to_x(tweet.content, image_path)
+        elapsed = time.monotonic() - started_at
         tweet.status = TweetStatus.posted
         tweet.posted_at = datetime.now(timezone.utc)
         tweet.x_tweet_id = x_id
@@ -86,9 +90,11 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
         db.commit()
         if image_path:
             Path(image_path).unlink(missing_ok=True)
+        posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
         return {"ok": True, "x_tweet_id": x_id}
     except Exception as e:
         db.rollback()
+        posting_logger.error(f"posting failed tweet_id={tweet_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -11,6 +11,8 @@ data/*
 !data/.gitkeep
 tweetsource/*
 !tweetsource/.gitkeep
+logs/*
+!logs/.gitkeep
 
 # Pythonキャッシュ
 __pycache__/

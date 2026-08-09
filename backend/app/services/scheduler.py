@@ -1,7 +1,9 @@
-import traceback
+import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timezone
+
+from app.logger import app_logger, posting_logger, news_logger
 
 scheduler = BackgroundScheduler(timezone="UTC")
 scheduler.start()
@@ -16,21 +18,22 @@ def _execute_post(tweet_id: int):
     try:
         tweet = db.query(Tweet).filter(Tweet.id == tweet_id).first()
         if not tweet:
-            print(f"[scheduler] tweet_id={tweet_id} が見つかりません")
+            posting_logger.warning(f"tweet_id={tweet_id} が見つかりません")
             return
         if tweet.status != TweetStatus.scheduled:
-            print(f"[scheduler] tweet_id={tweet_id} のステータスが scheduled ではありません: {tweet.status}")
+            posting_logger.warning(f"tweet_id={tweet_id} のステータスが scheduled ではありません: {tweet.status}")
             return
-        print(f"[scheduler] tweet_id={tweet_id} を投稿中...")
+        posting_logger.info(f"schedule executed: tweet_id={tweet_id}")
+        started_at = time.monotonic()
         x_id = post_tweet(tweet.content)
+        elapsed = time.monotonic() - started_at
         tweet.status = TweetStatus.posted
         tweet.posted_at = datetime.now(timezone.utc)
         tweet.x_tweet_id = x_id
         db.commit()
-        print(f"[scheduler] tweet_id={tweet_id} 投稿完了 x_id={x_id}")
+        posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
     except Exception as e:
-        print(f"[scheduler] 投稿エラー tweet_id={tweet_id}: {e}")
-        traceback.print_exc()
+        posting_logger.error(f"posting failed tweet_id={tweet_id}: {e}", exc_info=True)
         db.rollback()
     finally:
         db.close()
@@ -49,13 +52,12 @@ def schedule_tweet(tweet_id: int, run_at: datetime):
 
 def _run_news_fetch():
     from app.services.news_fetcher import fetch_and_process
-    print("[scheduler] ニュース自動取得開始")
+    news_logger.info("ニュース自動取得開始")
     try:
         stats = fetch_and_process()
-        print(f"[scheduler] ニュース自動取得完了: {stats}")
+        news_logger.info(f"ニュース自動取得完了: {stats}")
     except Exception as e:
-        print(f"[scheduler] ニュース取得エラー: {e}")
-        traceback.print_exc()
+        news_logger.error(f"ニュース取得エラー: {e}", exc_info=True)
 
 
 def setup_news_fetch_jobs():
@@ -74,7 +76,7 @@ def setup_news_fetch_jobs():
                     id=job_id,
                     replace_existing=True,
                 )
-                print(f"[scheduler] ニュース取得ジョブ登録: slot={slot.slot_number} hour={slot.hour}JST")
+                app_logger.info(f"ニュース取得ジョブ登録: slot={slot.slot_number} hour={slot.hour}JST")
             else:
                 try:
                     scheduler.remove_job(job_id)

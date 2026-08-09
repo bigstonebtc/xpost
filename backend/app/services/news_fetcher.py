@@ -2,7 +2,6 @@ import math
 import time
 import json
 import socket
-import traceback
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -12,6 +11,7 @@ import feedparser
 import anthropic
 
 from app.config import settings
+from app.logger import news_logger as logger
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
@@ -78,7 +78,7 @@ def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
         result = json.loads(text)
         return bool(result.get("relevant", False))
     except Exception as e:
-        print(f"[news_fetcher] AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
+        logger.error(f"AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
         return False
 
 
@@ -116,12 +116,12 @@ def fetch_and_process() -> dict:
                 finally:
                     socket.setdefaulttimeout(old_timeout)
             except Exception as e:
-                print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
+                logger.warning(f"RSS取得エラー {source.name} ({source.url}): {e}")
                 continue
 
             status = getattr(feed, "status", None)
             if status and status >= 400:
-                print(f"[news_fetcher] RSS HTTP {status} — スキップ: {source.name} ({source.url})")
+                logger.warning(f"RSS HTTP {status} — スキップ: {source.name} ({source.url})")
                 continue
 
             count_this_source = 0
@@ -185,12 +185,18 @@ def fetch_and_process() -> dict:
                 stats["added_pending"] += 1
 
         db.commit()
+
+        logger.info(f"fetched {stats['fetched']} articles from {len(sources)} sources")
+        logger.info(f"duplicate excluded: {stats['skipped_duplicate']}, remaining: {stats['fetched']}")
+        relevant = stats["fetched"] - stats["skipped_ai"]
+        logger.info(f"relevance: {relevant} relevant / {stats['skipped_ai']} not relevant")
+        logger.info(f"generated {stats['added_pending']} news tweets, added to queue")
+
         return stats
 
     except Exception as e:
         db.rollback()
-        print(f"[news_fetcher] エラー: {e}")
-        traceback.print_exc()
+        logger.error(f"エラー: {e}", exc_info=True)
         raise
     finally:
         db.close()
