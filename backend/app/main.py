@@ -60,6 +60,7 @@ def _migrate_news_settings_table():
         for col, definition in [
             ("schedule_mode", "VARCHAR(20) DEFAULT '120min'"),
             ("news_prompt_file", "VARCHAR(255) DEFAULT 'news_comment.prompt'"),
+            ("relevance_prompt", "TEXT"),
         ]:
             result = conn.execute(text(
                 "SELECT column_name FROM information_schema.columns "
@@ -157,6 +158,21 @@ def _migrate_news_sources_v2():
         db.close()
 
 
+def _ensure_relevance_prompt_default():
+    """relevance_promptがNULLの行にデフォルト値を補完する"""
+    from app.models.news import NewsSettings
+    db = SessionLocal()
+    try:
+        rows = db.query(NewsSettings).filter(NewsSettings.relevance_prompt == None).all()
+        for row in rows:
+            row.relevance_prompt = _DEFAULT_RELEVANCE_PROMPT
+        if rows:
+            db.commit()
+            print(f"[migration] news_settings.relevance_prompt を {len(rows)} 件補完しました")
+    finally:
+        db.close()
+
+
 def _seed_posting_settings():
     from app.models.posting import PostingSettings
 
@@ -189,6 +205,7 @@ async def lifespan(app: FastAPI):
     _migrate_tweets_table()
     _migrate_news_settings_table()
     _seed_news_data()
+    _ensure_relevance_prompt_default()
     _migrate_news_sources_v2()
     _seed_posting_settings()
     _recover_scheduled_tweets()
