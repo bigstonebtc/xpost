@@ -13,6 +13,7 @@ tweetsource/*
 !tweetsource/.gitkeep
 logs/*
 !logs/.gitkeep
+nginx/certs/
 
 # Pythonキャッシュ
 __pycache__/
