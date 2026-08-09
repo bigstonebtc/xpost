@@ -12,6 +12,7 @@ import anthropic
 
 from app.config import settings
 from app.logger import news_logger as logger
+from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
@@ -64,6 +65,7 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
 def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
     prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
+        check_and_record("anthropic")
         # プリフィルで {"relevant": まで固定し、確実にJSONを返させる
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -77,6 +79,9 @@ def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
         text = '{"relevant":' + rest
         result = json.loads(text)
         return bool(result.get("relevant", False))
+    except RateLimitExceeded:
+        logger.warning("AI判定スキップ: anthropic レート制限超過")
+        return False
     except Exception as e:
         logger.error(f"AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
         return False
@@ -170,7 +175,12 @@ def fetch_and_process() -> dict:
                     db.flush()
                     continue
 
-                tweet_text = generate_tweet_from_news(title, summary, prompt_file=news_prompt_file)
+                try:
+                    tweet_text = generate_tweet_from_news(title, summary, prompt_file=news_prompt_file)
+                except RateLimitExceeded:
+                    logger.warning(f"ツイート生成スキップ: anthropic レート制限超過 ({title[:30]})")
+                    tweet_text = None
+
                 db.add(NewsItem(
                     title=title,
                     url=url,
@@ -182,7 +192,8 @@ def fetch_and_process() -> dict:
                     status="pending",
                 ))
                 db.flush()
-                stats["added_pending"] += 1
+                if tweet_text:
+                    stats["added_pending"] += 1
 
         db.commit()
 

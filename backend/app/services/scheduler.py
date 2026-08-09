@@ -4,6 +4,7 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timezone
 
 from app.logger import app_logger, posting_logger, news_logger
+from app.utils.rate_limit import RateLimitExceeded
 
 scheduler = BackgroundScheduler(timezone="UTC")
 scheduler.start()
@@ -32,6 +33,9 @@ def _execute_post(tweet_id: int):
         tweet.x_tweet_id = x_id
         db.commit()
         posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
+    except RateLimitExceeded:
+        posting_logger.warning(f"posting skipped tweet_id={tweet_id}: x_api rate limit exceeded")
+        db.rollback()
     except Exception as e:
         posting_logger.error(f"posting failed tweet_id={tweet_id}: {e}", exc_info=True)
         db.rollback()

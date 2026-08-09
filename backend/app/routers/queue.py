@@ -15,6 +15,7 @@ from app.logger import posting_logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.services.scheduler import schedule_tweet
+from app.utils.rate_limit import RateLimitExceeded, format_message
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -92,6 +93,9 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
             Path(image_path).unlink(missing_ok=True)
         posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
         return {"ok": True, "x_tweet_id": x_id}
+    except RateLimitExceeded as e:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
     except Exception as e:
         db.rollback()
         posting_logger.error(f"posting failed tweet_id={tweet_id}: {e}", exc_info=True)

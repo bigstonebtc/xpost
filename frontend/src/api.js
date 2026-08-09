@@ -39,6 +39,7 @@ export const api = {
       .then(r => r.ok ? r.json() : Promise.reject('認証失敗'))
   },
   stats: () => request('GET', '/history/stats'),
+  rateLimitUsage: () => request('GET', '/rate-limit/usage'),
   queue: () => request('GET', '/queue/'),
   generate: () => request('POST', '/tweets/generate'),
   post: (id) => request('POST', `/queue/${id}/post`),

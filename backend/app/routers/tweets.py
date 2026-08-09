@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.tweet import Tweet, TweetStatus
 from app.services.writer import generate_tweets
 from app.dependencies import get_current_user
+from app.utils.rate_limit import format_message, would_allow
 
 router = APIRouter(prefix="/tweets", tags=["tweets"])
 
@@ -21,6 +22,10 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
     queue_count = db.query(Tweet).filter(Tweet.status == TweetStatus.queued).count()
     if queue_count >= 100:
         raise HTTPException(status_code=400, detail="キューが上限（100件）に達しています")
+
+    allowed, reset_at = would_allow("anthropic")
+    if not allowed:
+        raise HTTPException(status_code=429, detail=format_message("anthropic", reset_at))
 
     posted_tweets = (
         db.query(Tweet.content)

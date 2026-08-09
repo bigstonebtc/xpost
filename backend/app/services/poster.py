@@ -2,6 +2,7 @@ from pathlib import Path
 
 import tweepy
 from app.config import settings
+from app.utils.rate_limit import check_and_record
 
 client = tweepy.Client(
     consumer_key=settings.x_consumer_key,
@@ -20,6 +21,7 @@ api_v1 = tweepy.API(_auth_v1)
 
 
 def post_tweet(content: str, image_path: str = None) -> str:
+    check_and_record("x_api")
     media_ids = None
     if image_path and Path(image_path).exists():
         media = api_v1.media_upload(filename=image_path)

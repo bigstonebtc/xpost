@@ -8,6 +8,7 @@ const s = {
   title: { fontSize: '18px', fontWeight: 'bold' },
   newBtn: { padding: '8px 16px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
   card: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '12px' },
+  usage: { fontSize: '12px', color: '#888', marginBottom: '16px' },
   cardHeader: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' },
   cardTitle: { fontSize: '16px', fontWeight: 'bold', flex: 1 },
   docList: { fontSize: '12px', color: '#888', marginBottom: '12px' },
@@ -173,6 +174,7 @@ export default function TweetCreate() {
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
+  const [usage, setUsage] = useState(null)
   const navigate = useNavigate()
 
   const load = useCallback(async () => {
@@ -189,6 +191,13 @@ export default function TweetCreate() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const loadUsage = () => api.rateLimitUsage().then(setUsage).catch(() => {})
+    loadUsage()
+    const interval = setInterval(loadUsage, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
   const handleCreate = async ({ name, documents: docs, topics, types, prompt }) => {
     await api.createPrompt({ name, documents: docs, topics, types, prompt })
     setShowNew(false)
@@ -203,6 +212,12 @@ export default function TweetCreate() {
         <h2 style={s.title}>ツイート作成</h2>
         <button style={s.newBtn} onClick={() => setShowNew(true)}>＋ 新規プロンプト作成</button>
       </div>
+
+      {usage && (
+        <div style={s.usage}>
+          API使用状況（1時間）— Anthropic: {usage.anthropic.used}/{usage.anthropic.limit} ／ X API: {usage.x_api.used}/{usage.x_api.limit}
+        </div>
+      )}
 
       {prompts.length === 0 && (
         <p style={s.empty}>プロンプトがありません。「＋ 新規プロンプト作成」から作成してください。</p>

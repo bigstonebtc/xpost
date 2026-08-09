@@ -8,6 +8,7 @@ import anthropic
 
 from app.config import settings
 from app.logger import generation_logger as logger
+from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 
 PROMPTS_DIR = Path("/app/prompts")
@@ -108,6 +109,7 @@ def _pick(lst: list, n: int) -> list[str]:
 def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
     """同期で Claude API を1回呼び、ツイート1件を返す。
     スレッドセーフのためクライアントをスレッドごとに生成する。"""
+    check_and_record("anthropic")
     _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",
@@ -183,6 +185,8 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
             idx = future_to_idx[future]
             try:
                 results[idx] = future.result()
+            except RateLimitExceeded:
+                logger.warning(f"skipped [{idx}]: anthropic rate limit exceeded")
             except Exception as e:
                 logger.error(f"Claude API call failed [{idx}]: {e}")
 
@@ -221,6 +225,7 @@ def generate_tweet_from_news(
         ),
     })
 
+    check_and_record("anthropic")
     _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",

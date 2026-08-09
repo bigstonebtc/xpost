@@ -12,6 +12,7 @@ from app.routers import prompts as prompts_router
 from app.routers import images as images_router
 from app.routers import apikeys as apikeys_router
 from app.routers import posting as posting_router
+from app.routers import rate_limit as rate_limit_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -210,6 +211,7 @@ app.include_router(prompts_router.router)
 app.include_router(images_router.router)
 app.include_router(apikeys_router.router)
 app.include_router(posting_router.router)
+app.include_router(rate_limit_router.router)
 
 
 @app.get("/health")
