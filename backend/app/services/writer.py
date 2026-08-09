@@ -1,11 +1,13 @@
 import json
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import anthropic
 
 from app.config import settings
+from app.logger import generation_logger as logger
 
 
 PROMPTS_DIR = Path("/app/prompts")
@@ -165,6 +167,7 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
 
     calls = [build_call(i) for i in range(count)]
 
+    t0 = time.monotonic()
     results = [""] * count
     with ThreadPoolExecutor(max_workers=count) as executor:
         future_to_idx = {executor.submit(_call_claude_once, p, uc): i for i, (p, uc) in enumerate(calls)}
@@ -173,9 +176,12 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
             try:
                 results[idx] = future.result()
             except Exception as e:
-                print(f"[writer] generate_tweets [{idx}] エラー: {e}")
+                logger.error(f"generate_tweets [{idx}] failed: {e}")
 
-    return [t for t in results if t]
+    elapsed = time.monotonic() - t0
+    tweets = [t for t in results if t]
+    logger.info(f"generated {len(tweets)} tweets in {elapsed:.1f}s via {prompt_file or 'default'}")
+    return tweets
 
 
 def generate_tweet_from_news(

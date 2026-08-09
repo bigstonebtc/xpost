@@ -11,6 +11,7 @@ import feedparser
 import anthropic
 
 from app.config import settings
+from app.logger import news_logger as logger
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
@@ -55,7 +56,6 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
 def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
     prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
-        # プリフィルで {"relevant": まで固定し、確実にJSONを返させる
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=16,
@@ -69,7 +69,7 @@ def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
         result = json.loads(text)
         return bool(result.get("relevant", False))
     except Exception as e:
-        print(f"[news_fetcher] AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
+        logger.error(f"AI relevance check failed: {e}, rest={repr(locals().get('rest', ''))}")
         return False
 
 
@@ -82,12 +82,13 @@ def fetch_and_process() -> dict:
     try:
         sources = db.query(NewsSource).filter(NewsSource.is_enabled == True).all()
         if not sources:
+            logger.warning("no enabled news sources found")
             return {"fetched": 0, "skipped_old": 0, "skipped_duplicate": 0,
                     "skipped_ai": 0, "added_pending": 0}
 
         ns = db.query(NewsSettings).first()
         total_limit = ns.fetch_limit_per_run if ns else 20
-        prompt_template = ns.relevance_prompt if ns else DEFAULT_PROMPT
+        prompt_template = (ns.relevance_prompt if ns else None) or DEFAULT_PROMPT
         news_prompt_file = ns.news_prompt_file if ns else "news_comment.prompt"
 
         limit_per_source = math.ceil(total_limit / len(sources))
@@ -107,12 +108,12 @@ def fetch_and_process() -> dict:
                 finally:
                     socket.setdefaulttimeout(old_timeout)
             except Exception as e:
-                print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
+                logger.warning(f"RSS fetch failed source={source.url}: {e}")
                 continue
 
             status = getattr(feed, "status", None)
             if status and status >= 400:
-                print(f"[news_fetcher] RSS HTTP {status} — スキップ: {source.name} ({source.url})")
+                logger.warning(f"RSS HTTP {status} skipped: {source.name} ({source.url})")
                 continue
 
             count_this_source = 0
@@ -175,12 +176,16 @@ def fetch_and_process() -> dict:
                 db.flush()
                 stats["added_pending"] += 1
 
+        logger.info(f"fetched {stats['fetched']} articles from {len(sources)} sources")
+        logger.info(f"skipped old={stats['skipped_old']} duplicate={stats['skipped_duplicate']}")
+        logger.info(f"relevance: {stats['added_pending']} relevant / {stats['skipped_ai']} not relevant")
+
         db.commit()
         return stats
 
     except Exception as e:
         db.rollback()
-        print(f"[news_fetcher] エラー: {e}")
+        logger.error(f"fetch_and_process failed: {e}")
         traceback.print_exc()
         raise
     finally:

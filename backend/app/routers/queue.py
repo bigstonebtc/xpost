@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.logger import posting_logger as logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.services.scheduler import schedule_tweet
@@ -77,6 +78,7 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
     try:
+        logger.info(f"manual post requested tweet_id={tweet_id}")
         image_path = tweet.image_path
         x_id = _post_to_x(tweet.content, image_path)
         tweet.status = TweetStatus.posted
@@ -88,6 +90,7 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
             Path(image_path).unlink(missing_ok=True)
         return {"ok": True, "x_tweet_id": x_id}
     except Exception as e:
+        logger.error(f"manual post failed tweet_id={tweet_id}: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 

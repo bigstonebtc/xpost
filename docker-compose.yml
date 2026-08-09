@@ -24,6 +24,7 @@ services:
       - ./conf/env.conf:/app/conf/env.conf
       - ./prompts:/app/prompts
       - ./documents:/app/documents:ro
+      - ./logs:/app/logs
 
   frontend:
     build: ./frontend
