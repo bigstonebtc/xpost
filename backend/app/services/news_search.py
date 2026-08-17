@@ -60,14 +60,18 @@ def search_news_for_tweet(
     started_at = time.monotonic()
     message = client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=2048,
+        max_tokens=8192,
         system=_load_system_prompt(),
         tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
         messages=[{"role": "user", "content": user_content}],
     )
     elapsed = time.monotonic() - started_at
 
-    # web_search使用時、Claudeは検索経過の説明文を複数のtextブロックに分けて出力し、
+    if message.stop_reason == "max_tokens":
+        logger.error(f"news-search: max_tokensに到達し最終回答を得られませんでした ({elapsed:.1f}s)")
+        return {"found": False, "reason": "応答が長くなりすぎたため記事を特定できませんでした"}
+
+    # web_search使用時、Claudeは検索経過の説明文を複数のtextブロックに分けて出力することがあり、
     # 最後のtextブロックが最終回答（JSON）になる。全ブロックを連結すると説明文が
     # 混入してJSONとして解析できなくなるため、最後のブロックのみを使用する。
     text_blocks = [block.text for block in message.content if getattr(block, "type", None) == "text"]
