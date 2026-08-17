@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str
 
+    legacy_news_feature_enabled: bool = False
+
     class Config:
         env_file = "/app/conf/env.conf"
         env_file_encoding = "utf-8"

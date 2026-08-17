@@ -40,6 +40,7 @@ export const api = {
   },
   stats: () => request('GET', '/history/stats'),
   rateLimitUsage: () => request('GET', '/rate-limit/usage'),
+  features: () => request('GET', '/features/'),
   queue: () => request('GET', '/queue/'),
   generate: () => request('POST', '/tweets/generate'),
   post: (id) => request('POST', `/queue/${id}/post`),

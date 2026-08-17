@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.logger import app_logger
 from app.routers import auth, tweets, queue, history
@@ -13,6 +14,7 @@ from app.routers import images as images_router
 from app.routers import apikeys as apikeys_router
 from app.routers import posting as posting_router
 from app.routers import rate_limit as rate_limit_router
+from app.routers import features as features_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -186,8 +188,11 @@ async def lifespan(app: FastAPI):
     _seed_posting_settings()
     _recover_scheduled_tweets()
     _cleanup_old_images()
-    from app.services.scheduler import setup_news_fetch_jobs
-    setup_news_fetch_jobs()
+    if settings.legacy_news_feature_enabled:
+        from app.services.scheduler import setup_news_fetch_jobs
+        setup_news_fetch_jobs()
+    else:
+        app_logger.info("旧ニュース機能は無効化されています（自動取得ジョブ未登録）")
     yield
 
 
@@ -217,6 +222,7 @@ app.include_router(images_router.router)
 app.include_router(apikeys_router.router)
 app.include_router(posting_router.router)
 app.include_router(rate_limit_router.router)
+app.include_router(features_router.router)
 
 
 @app.get("/health")

@@ -6,11 +6,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_legacy_news_enabled
 from app.models.news import NewsSource, FetchSchedule, NewsSettings
 from app.services.news_fetcher import RELEVANCE_PROMPT_PATH, DEFAULT_PROMPT
 
-router = APIRouter(prefix="/settings/news", tags=["settings"])
+router = APIRouter(prefix="/settings/news", tags=["settings"], dependencies=[Depends(require_legacy_news_enabled)])
 
 
 class SourceCreate(BaseModel):

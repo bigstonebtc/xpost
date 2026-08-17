@@ -1,13 +1,13 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_legacy_news_enabled
 from app.models.news import NewsItem, NewsSource
 from app.models.tweet import Tweet, TweetStatus
 from app.services.writer import generate_tweet_from_news
 from app.utils.rate_limit import RateLimitExceeded, format_message
 
-router = APIRouter(prefix="/news", tags=["news"])
+router = APIRouter(prefix="/news", tags=["news"], dependencies=[Depends(require_legacy_news_enabled)])
 
 
 @router.get("/")
