@@ -1,4 +1,5 @@
 import random
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,8 @@ from app.utils.rate_limit import RateLimitExceeded, format_message
 router = APIRouter(prefix="/queue", tags=["queue"])
 
 JST = ZoneInfo("Asia/Tokyo")
+
+_ATTACHED_URL_RE = re.compile(r"(?:^|\n)(https?://\S+)\s*$")
 
 
 class TweetUpdate(BaseModel):
@@ -156,8 +159,12 @@ def edit_tweet(tweet_id: int, body: TweetUpdate, db: Session = Depends(get_db), 
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
-    if len(body.content) > 280:
-        raise HTTPException(status_code=400, detail="280文字を超えています")
+    if len(body.content) > 1024:
+        raise HTTPException(status_code=400, detail="1024文字を超えています")
+    match = _ATTACHED_URL_RE.search(body.content)
+    text_part = body.content[:match.start()] if match else body.content
+    if len(text_part.rstrip()) > 280:
+        raise HTTPException(status_code=400, detail="本文が280文字を超えています")
     tweet.content = body.content
     db.commit()
     return tweet

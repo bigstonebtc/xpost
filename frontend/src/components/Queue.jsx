@@ -48,7 +48,9 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
   const isScheduled = tweet.status === 'scheduled'
   const charCount = editText.length
-  const over = charCount > 280
+  const editUrlMatch = editText.match(ATTACHED_URL_RE)
+  const editTextPart = editUrlMatch ? editText.slice(0, editUrlMatch.index) : editText
+  const over = charCount > 1024 || editTextPart.trimEnd().length > 280
   const hasNewsUrl = hasAttachedNewsUrl(tweet.content)
 
   const formatScheduled = (iso) => {
@@ -93,7 +95,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   }
 
   const handleDone = async () => {
-    if (over) return alert('280文字を超えています')
+    if (over) return alert('文字数上限を超えています（本文280文字／URL付与時は合計1024文字）')
     setLoading(true)
     try {
       await api.edit(tweet.id, editText)
@@ -226,7 +228,9 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             onChange={e => setEditText(e.target.value)}
             autoFocus
           />
-          <div style={s.counter(over)}>{charCount}/280</div>
+          <div style={s.counter(over)}>
+            {editUrlMatch ? `本文 ${editTextPart.trimEnd().length}/280（＋URL、合計${charCount}/1024）` : `${charCount}/280`}
+          </div>
           <div style={s.btnRow}>
             <button style={s.btn('#2b6cb0')} onClick={handleDone} disabled={loading || over}>done</button>
             <button style={s.btn('#718096')} onClick={handleCancelEdit} disabled={loading}>cancel</button>

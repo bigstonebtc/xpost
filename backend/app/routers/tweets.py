@@ -89,8 +89,8 @@ def attach_news(tweet_id: int, body: NewsAttachRequest, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="不正なURLです")
 
     new_content = tweet.content.rstrip() + "\n" + body.url
-    if len(new_content) > 280:
-        raise HTTPException(status_code=400, detail="URLを追加すると280文字を超えます。ツイート本文を短くしてください。")
+    if len(new_content) > 1024:
+        raise HTTPException(status_code=400, detail="URLを追加すると文字数上限（1024文字）を超えます。")
 
     tweet.content = new_content
     db.commit()

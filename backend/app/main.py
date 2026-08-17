@@ -58,6 +58,16 @@ def _migrate_tweets_table():
                 conn.commit()
                 app_logger.info(f"tweets.{col} を追加しました")
 
+        result = conn.execute(text(
+            "SELECT character_maximum_length FROM information_schema.columns "
+            "WHERE table_name='tweets' AND column_name='content'"
+        ))
+        row = result.fetchone()
+        if row and row[0] != 1024:
+            conn.execute(text("ALTER TABLE tweets ALTER COLUMN content TYPE VARCHAR(1024)"))
+            conn.commit()
+            app_logger.info("tweets.content を VARCHAR(1024) に拡張しました")
+
 
 def _migrate_news_settings_table():
     with engine.connect() as conn:
