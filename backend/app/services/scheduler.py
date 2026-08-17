@@ -54,6 +54,13 @@ def schedule_tweet(tweet_id: int, run_at: datetime):
     )
 
 
+def unschedule_tweet(tweet_id: int):
+    try:
+        scheduler.remove_job(f"tweet_{tweet_id}")
+    except Exception:
+        pass
+
+
 def _run_news_fetch():
     from app.services.news_fetcher import fetch_and_process
     news_logger.info("ニュース自動取得開始")

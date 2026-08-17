@@ -134,6 +134,21 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
     return {"scheduled_at": scheduled_at}
 
 
+@router.post("/{tweet_id}/unschedule")
+def unschedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.services.scheduler import unschedule_tweet
+
+    tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.scheduled).first()
+    if not tweet:
+        raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+
+    unschedule_tweet(tweet_id)
+    tweet.status = TweetStatus.queued
+    tweet.scheduled_at = None
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/{tweet_id}/discard")
 def discard_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     tweet = db.query(Tweet).filter(

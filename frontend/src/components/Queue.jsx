@@ -85,6 +85,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     finally { setLoading(false) }
   }
 
+  const handleUnschedule = async () => {
+    setLoading(true)
+    try { await api.unschedule(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
   const handleDiscard = async () => {
     setLoading(true)
     try { await api.discard(tweet.id); onRefresh() }
@@ -247,7 +254,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             <>
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
               <div style={{ ...s.btnRow, marginTop: '8px' }}>
-                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>キャンセル</button>
+                <button style={s.btn('#e53e3e')} onClick={handleUnschedule} disabled={loading}>キャンセル</button>
               </div>
             </>
           ) : (

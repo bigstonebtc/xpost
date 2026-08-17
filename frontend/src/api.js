@@ -45,6 +45,7 @@ export const api = {
   generate: () => request('POST', '/tweets/generate'),
   post: (id) => request('POST', `/queue/${id}/post`),
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
+  unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
   searchNews: (tweetId, search_pattern, exclude_urls) =>
     request('POST', `/tweets/${tweetId}/news/search`, { search_pattern, exclude_urls }),
