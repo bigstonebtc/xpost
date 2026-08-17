@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 
+// ツイート生成用ではないシステムプロンプトはここでは表示しない（プロンプト管理画面では表示・編集可能）
+const NON_GENERATION_PROMPTS = ['news_search.prompt']
+
 const s = {
   page: { paddingBottom: '40px' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginTop: '20px' },
@@ -62,7 +65,7 @@ export default function TweetCreate() {
   const load = useCallback(async () => {
     try {
       const ps = await api.listPrompts()
-      setPrompts(ps)
+      setPrompts(ps.filter(p => !NON_GENERATION_PROMPTS.includes(p.filename)))
     } catch (e) {
       alert(e.message)
     } finally {
