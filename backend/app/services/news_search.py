@@ -67,17 +67,28 @@ def search_news_for_tweet(
     )
     elapsed = time.monotonic() - started_at
 
-    text = "".join(
-        block.text for block in message.content if getattr(block, "type", None) == "text"
-    ).strip()
+    # web_search使用時、Claudeは検索経過の説明文を複数のtextブロックに分けて出力し、
+    # 最後のtextブロックが最終回答（JSON）になる。全ブロックを連結すると説明文が
+    # 混入してJSONとして解析できなくなるため、最後のブロックのみを使用する。
+    text_blocks = [block.text for block in message.content if getattr(block, "type", None) == "text"]
+    raw_text = text_blocks[-1].strip() if text_blocks else ""
+
+    text = raw_text
     if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
     try:
         result = json.loads(text)
-    except Exception as e:
-        logger.error(f"news-search: JSON解析失敗: {e}, raw={text[:300]!r}")
-        return {"found": False, "reason": "記事情報の解析に失敗しました"}
+    except Exception:
+        # 前後に説明文が付いてしまった場合に備え、最初の{から最後の}までを抽出して再試行
+        start, end = text.find("{"), text.rfind("}")
+        try:
+            if start == -1 or end == -1 or end <= start:
+                raise ValueError("JSONブロックが見つかりません")
+            result = json.loads(text[start:end + 1])
+        except Exception as e:
+            logger.error(f"news-search: JSON解析失敗: {e}, raw={raw_text[:500]!r}")
+            return {"found": False, "reason": "記事情報の解析に失敗しました"}
 
     if result.get("found"):
         logger.info(
