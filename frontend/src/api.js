@@ -46,6 +46,10 @@ export const api = {
   post: (id) => request('POST', `/queue/${id}/post`),
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
+  searchNews: (tweetId, search_pattern, exclude_urls) =>
+    request('POST', `/tweets/${tweetId}/news/search`, { search_pattern, exclude_urls }),
+  attachNews: (tweetId, url) => request('POST', `/tweets/${tweetId}/news/attach`, { url }),
+  removeNews: (tweetId) => request('DELETE', `/tweets/${tweetId}/news`),
   edit: (id, content) => request('PUT', `/queue/${id}`, { content }),
   clearQueue: () => request('DELETE', '/queue/'),
   history: (filter = 'today') => request('GET', `/history/?filter=${filter}`),
