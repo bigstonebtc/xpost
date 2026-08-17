@@ -16,11 +16,8 @@ const s = {
   scheduled: { fontSize: '12px', color: '#718096', marginTop: '6px' },
   newsPanel: { marginTop: '10px', padding: '12px', background: '#f9f9fb', border: '1px solid #e0e0e0', borderRadius: '6px' },
   newsTitle: { fontSize: '14px', fontWeight: 'bold', marginBottom: '6px' },
-  newsBadge: { fontSize: '11px', color: '#555', background: '#eee', borderRadius: '4px', padding: '1px 6px', marginLeft: '6px', fontWeight: 'normal' },
   newsMeta: { fontSize: '13px', color: '#555', marginBottom: '2px' },
   newsSummary: { fontSize: '13px', marginTop: '8px', marginBottom: '8px', lineHeight: '1.5' },
-  newsStars: { fontSize: '14px', marginBottom: '2px' },
-  newsReason: { fontSize: '12px', color: '#777', marginBottom: '10px' },
   newsErr: { fontSize: '13px', color: '#e53e3e' },
 }
 
@@ -296,18 +293,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
                   {!newsLoading && newsResult && newsResult.found && (
                     <>
-                      <div style={s.newsTitle}>
-                        {newsResult.title}
-                        <span style={s.newsBadge}>{newsResult.article_type === 'column' ? 'コラム' : 'ニュース記事'}</span>
-                      </div>
+                      <div style={s.newsTitle}>{newsResult.title}</div>
                       <div style={s.newsMeta}>媒体：{newsResult.media}</div>
                       <div style={s.newsMeta}>発行日：{newsResult.published_date}{isRecent(newsResult.published_date) ? ' ✅ 直近' : ''}</div>
                       <div style={s.newsMeta}>
                         URL：<a href={newsResult.url} target="_blank" rel="noreferrer">{newsResult.url}</a>
                       </div>
-                      <div style={s.newsSummary}>{newsResult.content_summary}</div>
-                      <div style={s.newsStars}>ツイートのコメント性：{'⭐'.repeat(newsResult.comment_rating || 0)}</div>
-                      <div style={s.newsReason}>理由：{newsResult.comment_reason}</div>
+                      <div style={s.newsSummary}>{newsResult.snippet}</div>
                       <div style={s.btnRow}>
                         <button style={s.btn('#38a169')} onClick={handleNewsOK} disabled={loading}>OK</button>
                         <button style={s.btn('#2b6cb0')} onClick={handleNewsRetry} disabled={loading}>再取得</button>

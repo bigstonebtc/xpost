@@ -14,10 +14,9 @@ NEWS_SEARCH_PROMPT_FILE = "news_search.prompt"
 # prompts/news_search.prompt が存在しない場合のフォールバック
 _DEFAULT_SYSTEM_PROMPT = (
     "あなたはXアカウントの運用担当です。ユーザーから渡されたツイート本文に関連する報道記事を"
-    " web_search ツールで1件探してください。"
+    " web_search ツールで1件探してください。説明文や経過報告は出力しないこと。"
     ' 見つかった場合は {"found": true, "title": "...", "media": "...", "published_date": "YYYY-MM-DD",'
-    ' "url": "https://...", "content_summary": "...", "article_type": "news または column",'
-    ' "comment_rating": 1-5, "comment_reason": "..."} の形式で、'
+    ' "url": "https://...", "snippet": "検索で得たスニペット（30-100字、要約の生成はしない）"} の形式で、'
     ' 見つからない場合は {"found": false, "reason": "..."} の形式で、JSONのみを出力してください。'
 )
 
