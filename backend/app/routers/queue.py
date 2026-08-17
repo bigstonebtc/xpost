@@ -1,4 +1,5 @@
 import random
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,9 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.logger import posting_logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.services.scheduler import schedule_tweet
+from app.utils.rate_limit import RateLimitExceeded, format_message
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -78,7 +81,9 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
     try:
         image_path = tweet.image_path
+        started_at = time.monotonic()
         x_id = _post_to_x(tweet.content, image_path)
+        elapsed = time.monotonic() - started_at
         tweet.status = TweetStatus.posted
         tweet.posted_at = datetime.now(timezone.utc)
         tweet.x_tweet_id = x_id
@@ -86,9 +91,14 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
         db.commit()
         if image_path:
             Path(image_path).unlink(missing_ok=True)
+        posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
         return {"ok": True, "x_tweet_id": x_id}
+    except RateLimitExceeded as e:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
     except Exception as e:
         db.rollback()
+        posting_logger.error(f"posting failed tweet_id={tweet_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -124,6 +134,21 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
     return {"scheduled_at": scheduled_at}
 
 
+@router.post("/{tweet_id}/unschedule")
+def unschedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.services.scheduler import unschedule_tweet
+
+    tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.scheduled).first()
+    if not tweet:
+        raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+
+    unschedule_tweet(tweet_id)
+    tweet.status = TweetStatus.queued
+    tweet.scheduled_at = None
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/{tweet_id}/discard")
 def discard_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     tweet = db.query(Tweet).filter(
@@ -146,8 +171,8 @@ def edit_tweet(tweet_id: int, body: TweetUpdate, db: Session = Depends(get_db), 
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
-    if len(body.content) > 280:
-        raise HTTPException(status_code=400, detail="280文字を超えています")
+    if len(body.content) > 1024:
+        raise HTTPException(status_code=400, detail="1024文字を超えています")
     tweet.content = body.content
     db.commit()
     return tweet

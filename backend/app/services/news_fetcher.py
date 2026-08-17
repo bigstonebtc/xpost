@@ -2,7 +2,6 @@ import math
 import time
 import json
 import socket
-import traceback
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -12,6 +11,8 @@ import feedparser
 import anthropic
 
 from app.config import settings
+from app.logger import news_logger as logger
+from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
@@ -64,6 +65,7 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
 def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
     prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
+        check_and_record("anthropic")
         # プリフィルで {"relevant": まで固定し、確実にJSONを返させる
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -77,8 +79,11 @@ def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
         text = '{"relevant":' + rest
         result = json.loads(text)
         return bool(result.get("relevant", False))
+    except RateLimitExceeded:
+        logger.warning("AI判定スキップ: anthropic レート制限超過")
+        return False
     except Exception as e:
-        print(f"[news_fetcher] AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
+        logger.error(f"AI判定エラー: {e}, rest={repr(locals().get('rest', ''))}")
         return False
 
 
@@ -116,12 +121,12 @@ def fetch_and_process() -> dict:
                 finally:
                     socket.setdefaulttimeout(old_timeout)
             except Exception as e:
-                print(f"[news_fetcher] RSS取得エラー {source.url}: {e}")
+                logger.warning(f"RSS取得エラー {source.name} ({source.url}): {e}")
                 continue
 
             status = getattr(feed, "status", None)
             if status and status >= 400:
-                print(f"[news_fetcher] RSS HTTP {status} — スキップ: {source.name} ({source.url})")
+                logger.warning(f"RSS HTTP {status} — スキップ: {source.name} ({source.url})")
                 continue
 
             count_this_source = 0
@@ -170,7 +175,12 @@ def fetch_and_process() -> dict:
                     db.flush()
                     continue
 
-                tweet_text = generate_tweet_from_news(title, summary, prompt_file=news_prompt_file)
+                try:
+                    tweet_text = generate_tweet_from_news(title, summary, prompt_file=news_prompt_file)
+                except RateLimitExceeded:
+                    logger.warning(f"ツイート生成スキップ: anthropic レート制限超過 ({title[:30]})")
+                    tweet_text = None
+
                 db.add(NewsItem(
                     title=title,
                     url=url,
@@ -182,15 +192,22 @@ def fetch_and_process() -> dict:
                     status="pending",
                 ))
                 db.flush()
-                stats["added_pending"] += 1
+                if tweet_text:
+                    stats["added_pending"] += 1
 
         db.commit()
+
+        logger.info(f"fetched {stats['fetched']} articles from {len(sources)} sources")
+        logger.info(f"duplicate excluded: {stats['skipped_duplicate']}, remaining: {stats['fetched']}")
+        relevant = stats["fetched"] - stats["skipped_ai"]
+        logger.info(f"relevance: {relevant} relevant / {stats['skipped_ai']} not relevant")
+        logger.info(f"generated {stats['added_pending']} news tweets, added to queue")
+
         return stats
 
     except Exception as e:
         db.rollback()
-        print(f"[news_fetcher] エラー: {e}")
-        traceback.print_exc()
+        logger.error(f"エラー: {e}", exc_info=True)
         raise
     finally:
         db.close()

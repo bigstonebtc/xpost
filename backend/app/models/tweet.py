@@ -15,7 +15,7 @@ class Tweet(Base):
     __tablename__ = "tweets"
 
     id = Column(Integer, primary_key=True, index=True)
-    content = Column(String(280), nullable=False)
+    content = Column(String(1024), nullable=False)
     status = Column(SAEnum(TweetStatus), default=TweetStatus.queued, nullable=False)
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
     posted_at = Column(DateTime(timezone=True), nullable=True)

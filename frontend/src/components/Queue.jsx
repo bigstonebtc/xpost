@@ -14,6 +14,17 @@ const s = {
   createLink: { padding: '10px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', textDecoration: 'none', display: 'inline-block' },
   clearBtn: { padding: '8px 14px', background: '#fff', color: '#e53e3e', border: '1px solid #e53e3e', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
   scheduled: { fontSize: '12px', color: '#718096', marginTop: '6px' },
+  newsPanel: { marginTop: '10px', padding: '12px', background: '#f9f9fb', border: '1px solid #e0e0e0', borderRadius: '6px' },
+  newsTitle: { fontSize: '14px', fontWeight: 'bold', marginBottom: '6px' },
+  newsMeta: { fontSize: '13px', color: '#555', marginBottom: '2px' },
+  newsSummary: { fontSize: '13px', marginTop: '8px', marginBottom: '8px', lineHeight: '1.5' },
+  newsErr: { fontSize: '13px', color: '#e53e3e' },
+}
+
+const ATTACHED_URL_RE = /(?:^|\n)(https?:\/\/\S+)\s*$/
+
+function hasAttachedNewsUrl(content) {
+  return ATTACHED_URL_RE.test(content)
 }
 
 function TweetCard({ tweet, onRefresh, onUpdateContent }) {
@@ -26,10 +37,16 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     return `/xpost/api/images/preview/${filename}`
   })
   const fileInputRef = useRef(null)
+  const [newsPanelOpen, setNewsPanelOpen] = useState(false)
+  const [newsLoading, setNewsLoading] = useState(false)
+  const [newsResult, setNewsResult] = useState(null)
+  const [newsPattern, setNewsPattern] = useState(0)
+  const [newsExcludeUrls, setNewsExcludeUrls] = useState([])
 
   const isScheduled = tweet.status === 'scheduled'
   const charCount = editText.length
-  const over = charCount > 280
+  const over = charCount > 1024
+  const hasNewsUrl = hasAttachedNewsUrl(tweet.content)
 
   const formatScheduled = (iso) => {
     if (!iso) return ''
@@ -65,6 +82,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     finally { setLoading(false) }
   }
 
+  const handleUnschedule = async () => {
+    setLoading(true)
+    try { await api.unschedule(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
   const handleDiscard = async () => {
     setLoading(true)
     try { await api.discard(tweet.id); onRefresh() }
@@ -73,7 +97,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   }
 
   const handleDone = async () => {
-    if (over) return alert('280文字を超えています')
+    if (over) return alert('1024文字を超えています')
     setLoading(true)
     try {
       await api.edit(tweet.id, editText)
@@ -121,6 +145,74 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     finally { setLoading(false) }
   }
 
+  const runNewsSearch = async (pattern, excludeUrls) => {
+    setNewsLoading(true)
+    setNewsResult(null)
+    try {
+      const res = await api.searchNews(tweet.id, pattern, excludeUrls)
+      setNewsResult(res)
+    } catch (e) {
+      setNewsResult({ found: false, reason: e.message })
+    } finally {
+      setNewsLoading(false)
+    }
+  }
+
+  const handleNewsOpen = () => {
+    setNewsPanelOpen(true)
+    setNewsPattern(0)
+    setNewsExcludeUrls([])
+    runNewsSearch(0, [])
+  }
+
+  const handleNewsRetry = () => {
+    const nextPattern = (newsPattern + 1) % 6
+    const nextExclude = newsResult?.found && newsResult.url
+      ? [...newsExcludeUrls, newsResult.url]
+      : newsExcludeUrls
+    setNewsPattern(nextPattern)
+    setNewsExcludeUrls(nextExclude)
+    runNewsSearch(nextPattern, nextExclude)
+  }
+
+  const handleNewsOK = async () => {
+    if (!newsResult?.url) return
+    setLoading(true)
+    try {
+      const updated = await api.attachNews(tweet.id, newsResult.url)
+      onUpdateContent(tweet.id, updated.content)
+      setNewsPanelOpen(false)
+      setNewsResult(null)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleNewsClose = () => {
+    setNewsPanelOpen(false)
+    setNewsResult(null)
+  }
+
+  const handleNewsDelete = async () => {
+    setLoading(true)
+    try {
+      const updated = await api.removeNews(tweet.id)
+      onUpdateContent(tweet.id, updated.content)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isRecent = (dateStr) => {
+    if (!dateStr) return false
+    const d = new Date(dateStr)
+    return !isNaN(d) && (Date.now() - d) < 365 * 24 * 3600 * 1000
+  }
+
   return (
     <div style={s.card}>
       <input
@@ -138,7 +230,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             onChange={e => setEditText(e.target.value)}
             autoFocus
           />
-          <div style={s.counter(over)}>{charCount}/280</div>
+          <div style={s.counter(over)}>{charCount}/1024</div>
           <div style={s.btnRow}>
             <button style={s.btn('#2b6cb0')} onClick={handleDone} disabled={loading || over}>done</button>
             <button style={s.btn('#718096')} onClick={handleCancelEdit} disabled={loading}>cancel</button>
@@ -159,24 +251,65 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             <>
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
               <div style={{ ...s.btnRow, marginTop: '8px' }}>
-                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>キャンセル</button>
+                <button style={s.btn('#718096')} onClick={handleUnschedule} disabled={loading}>戻す</button>
+                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>削除</button>
               </div>
             </>
           ) : (
-            <div style={s.btnRow}>
-              <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
-              <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
-              {imagePreviewUrl ? (
-                <>
-                  <button style={s.btn('#805ad5')} onClick={handlePicClick} disabled={loading}>pic差替</button>
-                  <button style={s.btn('#e53e3e')} onClick={handleDeleteImage} disabled={loading}>pic削除</button>
-                </>
-              ) : (
-                <button style={s.btn('#805ad5')} onClick={handlePicClick} disabled={loading}>pic</button>
+            <>
+              <div style={s.btnRow}>
+                <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
+                <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
+                {imagePreviewUrl ? (
+                  <>
+                    <button style={s.btn('#805ad5')} onClick={handlePicClick} disabled={loading}>pic差替</button>
+                    <button style={s.btn('#e53e3e')} onClick={handleDeleteImage} disabled={loading}>pic削除</button>
+                  </>
+                ) : (
+                  <button style={s.btn('#805ad5')} onClick={handlePicClick} disabled={loading}>pic</button>
+                )}
+                {hasNewsUrl ? (
+                  <button style={s.btn('#dd8800')} onClick={handleNewsDelete} disabled={loading}>news削除</button>
+                ) : (
+                  <button style={s.btn('#dd8800')} onClick={handleNewsOpen} disabled={loading}>news</button>
+                )}
+                <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
+                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
+              </div>
+
+              {newsPanelOpen && (
+                <div style={s.newsPanel}>
+                  {newsLoading && <p>記事を検索しています...</p>}
+
+                  {!newsLoading && newsResult && !newsResult.found && (
+                    <>
+                      <p style={s.newsErr}>記事が見つかりませんでした{newsResult.reason ? `：${newsResult.reason}` : ''}</p>
+                      <div style={s.btnRow}>
+                        <button style={s.btn('#2b6cb0')} onClick={handleNewsRetry}>再取得</button>
+                        <button style={s.btn('#718096')} onClick={handleNewsClose}>閉じる</button>
+                      </div>
+                    </>
+                  )}
+
+                  {!newsLoading && newsResult && newsResult.found && (
+                    <>
+                      <div style={s.newsTitle}>{newsResult.title}</div>
+                      <div style={s.newsMeta}>媒体：{newsResult.media}</div>
+                      <div style={s.newsMeta}>発行日：{newsResult.published_date}{isRecent(newsResult.published_date) ? ' ✅ 直近' : ''}</div>
+                      <div style={s.newsMeta}>
+                        URL：<a href={newsResult.url} target="_blank" rel="noreferrer">{newsResult.url}</a>
+                      </div>
+                      <div style={s.newsSummary}>{newsResult.snippet}</div>
+                      <div style={s.btnRow}>
+                        <button style={s.btn('#38a169')} onClick={handleNewsOK} disabled={loading}>OK</button>
+                        <button style={s.btn('#2b6cb0')} onClick={handleNewsRetry} disabled={loading}>再取得</button>
+                        <button style={s.btn('#718096')} onClick={handleNewsClose} disabled={loading}>閉じる</button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
-              <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
-              <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
-            </div>
+            </>
           )}
         </>
       )}

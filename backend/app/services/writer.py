@@ -1,11 +1,14 @@
 import json
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import anthropic
 
 from app.config import settings
+from app.logger import generation_logger as logger
+from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 
 PROMPTS_DIR = Path("/app/prompts")
@@ -106,6 +109,7 @@ def _pick(lst: list, n: int) -> list[str]:
 def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
     """同期で Claude API を1回呼び、ツイート1件を返す。
     スレッドセーフのためクライアントをスレッドごとに生成する。"""
+    check_and_record("anthropic")
     _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",
@@ -126,6 +130,8 @@ def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
 
 def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
     cfg = _resolve_prompt(prompt_file)
+    logger.info(f"topics loaded: {len(cfg.get('topics', []))} items from {prompt_file or 'default'}")
+
     source = _load_documents(cfg["documents"])
     prompt_template = cfg["prompt"] or _FALLBACK_PROMPT
 
@@ -134,6 +140,12 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
 
     selected_topics = _pick(cfg.get("topics", []), count) if use_topic else []
     shuffled_types = _pick(cfg.get("types", []), count) if use_type else []
+
+    if use_topic:
+        topic_ids = [t.split(".")[0] for t in selected_topics]
+        logger.info(f"selected topics: {', '.join(topic_ids)}")
+    if use_type:
+        logger.info(f"selected types: {', '.join(shuffled_types)}")
 
     past_section = ""
     if past_tweets:
@@ -165,6 +177,7 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
 
     calls = [build_call(i) for i in range(count)]
 
+    started_at = time.monotonic()
     results = [""] * count
     with ThreadPoolExecutor(max_workers=count) as executor:
         future_to_idx = {executor.submit(_call_claude_once, p, uc): i for i, (p, uc) in enumerate(calls)}
@@ -172,10 +185,14 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
             idx = future_to_idx[future]
             try:
                 results[idx] = future.result()
+            except RateLimitExceeded:
+                logger.warning(f"skipped [{idx}]: anthropic rate limit exceeded")
             except Exception as e:
-                print(f"[writer] generate_tweets [{idx}] エラー: {e}")
+                logger.error(f"Claude API call failed [{idx}]: {e}")
 
-    return [t for t in results if t]
+    generated = [t for t in results if t]
+    logger.info(f"generated {len(generated)} tweets in {time.monotonic() - started_at:.1f}s")
+    return generated
 
 
 def generate_tweet_from_news(
@@ -208,6 +225,7 @@ def generate_tweet_from_news(
         ),
     })
 
+    check_and_record("anthropic")
     _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",

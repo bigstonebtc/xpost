@@ -14,3 +14,8 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return payload
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+
+def require_legacy_news_enabled():
+    if not settings.legacy_news_feature_enabled:
+        raise HTTPException(status_code=404, detail="旧ニュース機能は無効化されています")

@@ -25,6 +25,7 @@ services:
       - ./conf/prompts:/app/conf/prompts
       - ./prompts:/app/prompts
       - ./documents:/app/documents:ro
+      - ./logs:/app/logs
 
   frontend:
     build: ./frontend

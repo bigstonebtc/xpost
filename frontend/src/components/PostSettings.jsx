@@ -72,7 +72,7 @@ export default function PostSettings() {
     try {
       await api.newsUpdateGeneral(
         savedSettings.fetch_limit_per_run,
-        savedSettings.relevance_prompt,
+        null,
         scheduleMode,
         savedSettings.news_prompt_file,
       )

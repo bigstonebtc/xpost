@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { getToken, setToken, api } from './api'
 import Dashboard from './components/Dashboard'
 import Queue from './components/Queue'
 import TweetCreate from './components/TweetCreate'
+import PromptManage from './components/PromptManage'
 import History from './components/History'
 import News from './components/News'
 import NewsSettings from './components/NewsSettings'
@@ -64,16 +65,18 @@ const tabStyle = (active) => ({
   fontWeight: active ? 'bold' : 'normal',
 })
 
-function SettingsLayout() {
+function SettingsLayout({ legacyNewsEnabled }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: '4px', marginBottom: '0', borderBottom: '2px solid #1a1a2e' }}>
         <NavLink to="/settings" end style={{ textDecoration: 'none' }}>
           {({ isActive }) => <button style={tabStyle(isActive)}>投稿設定</button>}
         </NavLink>
-        <NavLink to="/settings/news" style={{ textDecoration: 'none' }}>
-          {({ isActive }) => <button style={tabStyle(isActive)}>ニュース設定</button>}
-        </NavLink>
+        {legacyNewsEnabled && (
+          <NavLink to="/settings/news" style={{ textDecoration: 'none' }}>
+            {({ isActive }) => <button style={tabStyle(isActive)}>ニュース設定</button>}
+          </NavLink>
+        )}
         <NavLink to="/settings/api" style={{ textDecoration: 'none' }}>
           {({ isActive }) => <button style={tabStyle(isActive)}>API設定</button>}
         </NavLink>
@@ -81,7 +84,7 @@ function SettingsLayout() {
       <div style={{ paddingTop: '16px' }}>
         <Routes>
           <Route index element={<PostSettings />} />
-          <Route path="news" element={<NewsSettings />} />
+          {legacyNewsEnabled && <Route path="news" element={<NewsSettings />} />}
           <Route path="api" element={<ApiKeySettings />} />
         </Routes>
       </div>
@@ -91,6 +94,12 @@ function SettingsLayout() {
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
+  const [legacyNewsEnabled, setLegacyNewsEnabled] = useState(false)
+
+  useEffect(() => {
+    if (!authed) return
+    api.features().then(f => setLegacyNewsEnabled(!!f.legacy_news_enabled)).catch(() => {})
+  }, [authed])
 
   if (!authed) {
     return <Login onLogin={() => setAuthed(true)} />
@@ -103,7 +112,8 @@ export default function App() {
         <NavLink to="/dashboard" style={navLinkStyle}>ダッシュボード</NavLink>
         <NavLink to="/queue" style={navLinkStyle}>キュー</NavLink>
         <NavLink to="/create" style={navLinkStyle}>ツイート作成</NavLink>
-        <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>
+        <NavLink to="/prompts" style={navLinkStyle}>プロンプト管理</NavLink>
+        {legacyNewsEnabled && <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>}
         <NavLink to="/history" style={navLinkStyle}>履歴</NavLink>
         <NavLink to="/settings" style={navLinkStyle}>設定</NavLink>
       </nav>
@@ -112,9 +122,10 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/queue" element={<Queue />} />
           <Route path="/create" element={<TweetCreate />} />
-          <Route path="/news" element={<News />} />
+          <Route path="/prompts" element={<PromptManage />} />
+          {legacyNewsEnabled && <Route path="/news" element={<News />} />}
           <Route path="/news-settings" element={<Navigate to="/settings" />} />
-          <Route path="/settings/*" element={<SettingsLayout />} />
+          <Route path="/settings/*" element={<SettingsLayout legacyNewsEnabled={legacyNewsEnabled} />} />
           <Route path="/history" element={<History />} />
           <Route path="*" element={<Navigate to="/queue" />} />
         </Routes>

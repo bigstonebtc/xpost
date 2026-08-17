@@ -3,7 +3,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from app.config import settings
 from app.database import engine, Base, SessionLocal
+from app.logger import app_logger
 from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
@@ -11,6 +13,8 @@ from app.routers import prompts as prompts_router
 from app.routers import images as images_router
 from app.routers import apikeys as apikeys_router
 from app.routers import posting as posting_router
+from app.routers import rate_limit as rate_limit_router
+from app.routers import features as features_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -33,7 +37,7 @@ def _recover_scheduled_tweets():
             if run_at <= now:
                 run_at = now + timedelta(minutes=1)
             schedule_tweet(tweet.id, run_at)
-            print(f"[startup] tweet_id={tweet.id} を再スケジュール: {run_at}")
+            app_logger.info(f"tweet_id={tweet.id} を再スケジュール: {run_at}")
     finally:
         db.close()
 
@@ -52,7 +56,17 @@ def _migrate_tweets_table():
             if not result.fetchone():
                 conn.execute(text(f"ALTER TABLE tweets ADD COLUMN {col} {definition}"))
                 conn.commit()
-                print(f"[migration] tweets.{col} を追加しました")
+                app_logger.info(f"tweets.{col} を追加しました")
+
+        result = conn.execute(text(
+            "SELECT character_maximum_length FROM information_schema.columns "
+            "WHERE table_name='tweets' AND column_name='content'"
+        ))
+        row = result.fetchone()
+        if row and row[0] != 1024:
+            conn.execute(text("ALTER TABLE tweets ALTER COLUMN content TYPE VARCHAR(1024)"))
+            conn.commit()
+            app_logger.info("tweets.content を VARCHAR(1024) に拡張しました")
 
 
 def _migrate_news_settings_table():
@@ -68,7 +82,7 @@ def _migrate_news_settings_table():
             if not result.fetchone():
                 conn.execute(text(f"ALTER TABLE news_settings ADD COLUMN {col} {definition}"))
                 conn.commit()
-                print(f"[migration] news_settings.{col} を追加しました")
+                app_logger.info(f"news_settings.{col} を追加しました")
 
 
 def _seed_news_data():
@@ -90,16 +104,16 @@ def _seed_news_data():
             for name, url, category, enabled in presets:
                 db.add(NewsSource(name=name, url=url, category=category, is_enabled=enabled, is_preset=True))
             # ===== /旧プリセット =====
-            print("[seed] news_sources を初期化しました（旧プリセットは無効状態）")
+            app_logger.info("news_sources を初期化しました（旧プリセットは無効状態）")
 
         if db.query(FetchSchedule).count() == 0:
             for slot, hour, enabled in [(1, 7, True), (2, 12, True), (3, 17, True), (4, 21, False)]:
                 db.add(FetchSchedule(slot_number=slot, hour=hour, is_enabled=enabled))
-            print("[seed] fetch_schedules を初期化しました")
+            app_logger.info("fetch_schedules を初期化しました")
 
         if db.query(NewsSettings).count() == 0:
             db.add(NewsSettings(fetch_limit_per_run=20))
-            print("[seed] news_settings を初期化しました")
+            app_logger.info("news_settings を初期化しました")
 
         db.commit()
     finally:
@@ -141,7 +155,7 @@ def _migrate_news_sources_v2():
             if not exists:
                 db.add(NewsSource(name=name, url=url, category=category,
                                   is_enabled=True, is_preset=False))
-                print(f"[migrate_v2] ソース追加: {name}")
+                app_logger.info(f"ソース追加: {name}")
 
         db.commit()
     finally:
@@ -156,7 +170,7 @@ def _seed_posting_settings():
         if db.query(PostingSettings).count() == 0:
             db.add(PostingSettings(daily_schedule_limit=10))
             db.commit()
-            print("[seed] posting_settings を初期化しました")
+            app_logger.info("posting_settings を初期化しました")
     finally:
         db.close()
 
@@ -171,7 +185,7 @@ def _cleanup_old_images():
     for f in images_dir.iterdir():
         if f.is_file() and f.stat().st_mtime < cutoff:
             f.unlink(missing_ok=True)
-            print(f"[cleanup] 古い一時画像を削除: {f.name}")
+            app_logger.info(f"古い一時画像を削除: {f.name}")
 
 
 @asynccontextmanager
@@ -184,8 +198,11 @@ async def lifespan(app: FastAPI):
     _seed_posting_settings()
     _recover_scheduled_tweets()
     _cleanup_old_images()
-    from app.services.scheduler import setup_news_fetch_jobs
-    setup_news_fetch_jobs()
+    if settings.legacy_news_feature_enabled:
+        from app.services.scheduler import setup_news_fetch_jobs
+        setup_news_fetch_jobs()
+    else:
+        app_logger.info("旧ニュース機能は無効化されています（自動取得ジョブ未登録）")
     yield
 
 
@@ -193,7 +210,12 @@ app = FastAPI(title="xpost API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:3000",
+        "http://160.251.142.37",
+        "https://160.251.142.37",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -209,6 +231,8 @@ app.include_router(prompts_router.router)
 app.include_router(images_router.router)
 app.include_router(apikeys_router.router)
 app.include_router(posting_router.router)
+app.include_router(rate_limit_router.router)
+app.include_router(features_router.router)
 
 
 @app.get("/health")

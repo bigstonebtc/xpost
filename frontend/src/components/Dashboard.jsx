@@ -34,11 +34,11 @@ export default function Dashboard() {
     <div style={{ marginTop: '20px' }}>
       <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>ダッシュボード</h2>
       <div style={styles.card}>
-        <div style={styles.label}>キュー件数</div>
+        <div style={styles.label}>未スケジュール</div>
         <div style={styles.value}>{stats.queue_count}</div>
       </div>
       <div style={styles.card}>
-        <div style={styles.label}>投稿予定件数（合計）</div>
+        <div style={styles.label}>キュー件数(合計)</div>
         <div style={styles.value}>{stats.scheduled_count}</div>
         <div style={styles.subRows}>
           <div style={styles.subRow}>
