@@ -20,7 +20,7 @@ const s = {
   label: { fontSize: '13px', color: '#555', marginBottom: '4px', display: 'block' },
   input: { width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '12px' },
   textarea: { width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '13px', fontFamily: 'monospace', lineHeight: '1.6', resize: 'vertical', minHeight: '400px', flex: 1, boxSizing: 'border-box', marginBottom: '12px' },
-  checkboxList: { marginBottom: '12px', maxHeight: '160px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px', padding: '8px' },
+  checkboxList: { marginBottom: '12px', maxHeight: '160px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px', padding: '8px', flexShrink: 0 },
   checkboxRow: { display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 0', fontSize: '13px' },
   modalBtnRow: { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' },
   saveBtn: { padding: '8px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
@@ -28,14 +28,59 @@ const s = {
   errMsg: { color: '#e53e3e', fontSize: '13px', marginBottom: '8px' },
   warnMsg: { color: '#dd8800', fontSize: '13px', marginBottom: '8px' },
   empty: { color: '#999', textAlign: 'center', marginTop: '40px' },
+  hint: { color: '#aaa', marginLeft: '6px', fontWeight: 'normal' },
+}
+
+// topics/types/prompt を1つのテキストにまとめて表示・編集するためのヘルパー
+// 「topics =」「types =」ヘッダーと「[prompt]」マーカーを含む場合のみ構造化解析し、
+// それ以外は入力全体をそのままプロンプト本文として扱う
+function buildCombinedBody(topics, types, prompt) {
+  let header = ''
+  if (topics && topics.trim()) {
+    header += 'topics =\n' + topics.trim().split('\n').map(l => '  ' + l.trim()).join('\n') + '\n\n'
+  }
+  if (types && types.trim()) {
+    header += 'types =\n' + types.trim().split('\n').map(l => '  ' + l.trim()).join('\n') + '\n\n'
+  }
+  return header ? header + '[prompt]\n' + prompt : prompt
+}
+
+function splitCombinedBody(text) {
+  const lines = text.split('\n')
+  const markerIdx = lines.findIndex(l => l.trim() === '[prompt]')
+  if (markerIdx === -1) {
+    return { topics: '', types: '', prompt: text.trim() }
+  }
+  const topicsLines = []
+  const typesLines = []
+  let state = null
+  for (const line of lines.slice(0, markerIdx)) {
+    const stripped = line.trim()
+    if (!stripped || stripped.startsWith('#')) continue
+    if (line.startsWith(' ') || line.startsWith('\t')) {
+      if (state === 'topics') topicsLines.push(stripped)
+      else if (state === 'types') typesLines.push(stripped)
+      continue
+    }
+    const eqIdx = stripped.indexOf('=')
+    const key = eqIdx === -1 ? stripped : stripped.slice(0, eqIdx).trim()
+    if (key === 'topics' || key === 'types') {
+      state = key
+      const val = eqIdx === -1 ? '' : stripped.slice(eqIdx + 1).trim()
+      if (val) (key === 'topics' ? topicsLines : typesLines).push(val)
+    }
+  }
+  return {
+    topics: topicsLines.join('\n'),
+    types: typesLines.join('\n'),
+    prompt: lines.slice(markerIdx + 1).join('\n').trim(),
+  }
 }
 
 function PromptModal({ initial, documents, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || '')
   const [selectedDocs, setSelectedDocs] = useState(initial?.documents || [])
-  const [topics, setTopics] = useState(initial?.topics || '')
-  const [types, setTypes] = useState(initial?.types || '')
-  const [prompt, setPrompt] = useState(initial?.prompt || '')
+  const [body, setBody] = useState(() => buildCombinedBody(initial?.topics || '', initial?.types || '', initial?.prompt || ''))
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -45,6 +90,7 @@ function PromptModal({ initial, documents, onSave, onClose }) {
     )
   }
 
+  const { topics, types, prompt } = splitCombinedBody(body)
   const topicWarning = prompt.includes('{topic}') && !topics.trim()
   const typeWarning = prompt.includes('{type}') && !types.trim()
 
@@ -83,16 +129,10 @@ function PromptModal({ initial, documents, onSave, onClose }) {
           }
         </div>
 
-        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span></label>
-        <textarea style={s.textarea} value={prompt} onChange={e => setPrompt(e.target.value)} spellCheck={false} />
-
-        <label style={s.label}>論点リスト（任意）<span style={{ color: '#aaa', marginLeft: '6px', fontWeight: 'normal' }}>1行1論点。プロンプト本文に {'{topic}'} がある場合に使用</span></label>
+        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>論点リスト・型リストを使う場合は先頭に「topics =」「types =」（1行1項目、インデント）と「[prompt]」を書いてから本文を続けてください</span></label>
         {topicWarning && <p style={s.warnMsg}>⚠ 本文に {'{topic}'} がありますが、論点リストが空です</p>}
-        <textarea style={{ ...s.textarea, minHeight: '200px' }} value={topics} onChange={e => setTopics(e.target.value)} spellCheck={false} placeholder={'A1. 相続財産は...\nA2. 死亡は経済的付加価値を...'} />
-
-        <label style={s.label}>型リスト（任意）<span style={{ color: '#aaa', marginLeft: '6px', fontWeight: 'normal' }}>1行1型。プロンプト本文に {'{type}'} がある場合に使用</span></label>
         {typeWarning && <p style={s.warnMsg}>⚠ 本文に {'{type}'} がありますが、型リストが空です</p>}
-        <textarea style={{ ...s.textarea, minHeight: '120px' }} value={types} onChange={e => setTypes(e.target.value)} spellCheck={false} placeholder={'【問いかけ型】読者に疑問を投げかける\n【データ型】数字・統計を冒頭に出す'} />
+        <textarea style={s.textarea} value={body} onChange={e => setBody(e.target.value)} spellCheck={false} />
 
         <div style={s.modalBtnRow}>
           <button style={s.cancelBtn} onClick={onClose} disabled={saving}>キャンセル</button>
