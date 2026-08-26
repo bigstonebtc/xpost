@@ -113,7 +113,7 @@ def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
     _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=512,
+        max_tokens=2048,
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],
     )
@@ -122,10 +122,10 @@ def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
     try:
         items = json.loads(text)
-        return (items[0] if items else "")[:140]
+        return (items[0] if items else "")[:1024]
     except Exception:
         # JSONパース失敗時はテキストをそのまま使う
-        return text[:140]
+        return text[:1024]
 
 
 def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
@@ -152,7 +152,7 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
         samples = random.sample(past_tweets, min(20, len(past_tweets)))
         past_section = "\n【過去の投稿（これらと表現が被らないようにすること）】\n" + "\n".join("- " + t for t in samples)
 
-    instruction = "140文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
+    instruction = "1024文字以内のツイートを1件生成してください。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
 
     def build_call(i: int):
         # str.replace() を使用（str.format() は {topic}/{type} でKeyErrorになるため不可）
