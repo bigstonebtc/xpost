@@ -12,12 +12,21 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 PROMPTS_DIR = Path("/app/prompts")
 DOCUMENTS_DIR = Path("/app/documents")
 
-_VALID_FILENAME = re.compile(r"^[a-zA-Z0-9_]+\.prompt$")
+_VALID_FILENAME = re.compile(r"^[^\\/\x00-\x1f]+\.prompt$")
+_UNSAFE_FILENAME_CHARS = re.compile(r"[\\/\x00-\x1f]")
 
 
 def _ensure_dirs():
     PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
     DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _slugify(name: str) -> str:
+    """プロンプト名からファイル名を作る。日本語などはそのまま残し、
+    パス区切り文字や制御文字だけを置換する"""
+    slug = _UNSAFE_FILENAME_CHARS.sub("_", name.strip())
+    slug = slug.strip(" .")
+    return slug or "prompt"
 
 
 def _parse_multiline_field(lines: list[str]) -> str:
@@ -175,7 +184,7 @@ def create_prompt(body: PromptCreate, _=Depends(get_current_user)):
     if not body.prompt:
         raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
 
-    filename = re.sub(r"[^a-zA-Z0-9_]", "_", body.name.lower().replace(" ", "_")) + ".prompt"
+    filename = _slugify(body.name) + ".prompt"
     path = PROMPTS_DIR / filename
     if path.exists():
         raise HTTPException(status_code=409, detail=f"{filename} は既に存在します")
