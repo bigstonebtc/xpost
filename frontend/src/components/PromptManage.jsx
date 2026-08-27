@@ -31,56 +31,10 @@ const s = {
   hint: { color: '#aaa', marginLeft: '6px', fontWeight: 'normal' },
 }
 
-// topics/types/prompt を1つのテキストにまとめて表示・編集するためのヘルパー
-// 「topics =」「types =」ヘッダーと「[prompt]」マーカーを含む場合のみ構造化解析し、
-// それ以外は入力全体をそのままプロンプト本文として扱う
-function buildCombinedBody(topics, types, prompt) {
-  let header = ''
-  if (topics && topics.trim()) {
-    header += 'topics =\n' + topics.trim().split('\n').map(l => '  ' + l.trim()).join('\n') + '\n\n'
-  }
-  if (types && types.trim()) {
-    header += 'types =\n' + types.trim().split('\n').map(l => '  ' + l.trim()).join('\n') + '\n\n'
-  }
-  return header ? header + '[prompt]\n' + prompt : prompt
-}
-
-function splitCombinedBody(text) {
-  const lines = text.split('\n')
-  const markerIdx = lines.findIndex(l => l.trim() === '[prompt]')
-  if (markerIdx === -1) {
-    return { topics: '', types: '', prompt: text.trim() }
-  }
-  const topicsLines = []
-  const typesLines = []
-  let state = null
-  for (const line of lines.slice(0, markerIdx)) {
-    const stripped = line.trim()
-    if (!stripped || stripped.startsWith('#')) continue
-    if (line.startsWith(' ') || line.startsWith('\t')) {
-      if (state === 'topics') topicsLines.push(stripped)
-      else if (state === 'types') typesLines.push(stripped)
-      continue
-    }
-    const eqIdx = stripped.indexOf('=')
-    const key = eqIdx === -1 ? stripped : stripped.slice(0, eqIdx).trim()
-    if (key === 'topics' || key === 'types') {
-      state = key
-      const val = eqIdx === -1 ? '' : stripped.slice(eqIdx + 1).trim()
-      if (val) (key === 'topics' ? topicsLines : typesLines).push(val)
-    }
-  }
-  return {
-    topics: topicsLines.join('\n'),
-    types: typesLines.join('\n'),
-    prompt: lines.slice(markerIdx + 1).join('\n').trim(),
-  }
-}
-
 function PromptModal({ initial, documents, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || '')
   const [selectedDocs, setSelectedDocs] = useState(initial?.documents || [])
-  const [body, setBody] = useState(() => buildCombinedBody(initial?.topics || '', initial?.types || '', initial?.prompt || ''))
+  const [body, setBody] = useState(initial?.body || '')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -90,17 +44,17 @@ function PromptModal({ initial, documents, onSave, onClose }) {
     )
   }
 
-  const { topics, types, prompt } = splitCombinedBody(body)
-  const topicWarning = prompt.includes('{topic}') && !topics.trim()
-  const typeWarning = prompt.includes('{type}') && !types.trim()
+  // ヒント表示のみの簡易チェック（保存データには影響しない）
+  const topicWarning = body.includes('{topic}') && !/^\s*topics\s*=/m.test(body)
+  const typeWarning = body.includes('{type}') && !/^\s*types\s*=/m.test(body)
 
   const handleSave = async () => {
     if (!name.trim()) { setErr('プロンプト名は必須です'); return }
     if (name.trim().length > 50) { setErr('プロンプト名は50文字以内です'); return }
-    if (!prompt.trim()) { setErr('プロンプト本文は必須です'); return }
+    if (!body.trim()) { setErr('プロンプト本文は必須です'); return }
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), documents: selectedDocs, topics, types, prompt: prompt.trim() })
+      await onSave({ name: name.trim(), documents: selectedDocs, body })
     } catch (e) {
       setErr(e.message)
       setSaving(false)
@@ -129,7 +83,7 @@ function PromptModal({ initial, documents, onSave, onClose }) {
           }
         </div>
 
-        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>論点リスト・型リストを使う場合は先頭に「topics =」「types =」（1行1項目、インデント）と「[prompt]」を書いてから本文を続けてください</span></label>
+        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>入力した内容がそのまま保存されます（#コメント可）。論点リスト・型リストを使う場合は先頭に「topics =」「types =」（1行1項目、インデント）と「[prompt]」を書いてから本文を続けてください</span></label>
         {topicWarning && <p style={s.warnMsg}>⚠ 本文に {'{topic}'} がありますが、論点リストが空です</p>}
         {typeWarning && <p style={s.warnMsg}>⚠ 本文に {'{type}'} がありますが、型リストが空です</p>}
         <textarea style={s.textarea} value={body} onChange={e => setBody(e.target.value)} spellCheck={false} />
@@ -156,8 +110,8 @@ function PromptRow({ prompt, documents, onRefresh }) {
     }
   }
 
-  const handleEdit = async ({ name, documents: docs, topics, types, prompt: body }) => {
-    await api.updatePrompt(prompt.filename, { name, documents: docs, topics, types, prompt: body })
+  const handleEdit = async ({ name, documents: docs, body }) => {
+    await api.updatePrompt(prompt.filename, { name, documents: docs, body })
     setShowEdit(false)
     onRefresh()
   }
@@ -211,8 +165,8 @@ export default function PromptManage() {
 
   useEffect(() => { load() }, [load])
 
-  const handleCreate = async ({ name, documents: docs, topics, types, prompt }) => {
-    await api.createPrompt({ name, documents: docs, topics, types, prompt })
+  const handleCreate = async ({ name, documents: docs, body }) => {
+    await api.createPrompt({ name, documents: docs, body })
     setShowNew(false)
     load()
   }
