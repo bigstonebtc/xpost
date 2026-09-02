@@ -98,31 +98,41 @@ def _migrate_tor_columns():
                 app_logger.info(f"tweets.{col} を追加しました")
 
 
-def _migrate_posting_settings_table():
+def _add_posting_settings_columns() -> bool:
+    """posting_settingsに不足列を追加する。ORM(PostingSettingsモデル)がこの列を
+    参照するため、_seed_posting_settings()より前に必ず実行する必要がある。
+    新規に列を追加した場合はTrueを返す（追加直後のみバックフィルするための判定用）。"""
     with engine.connect() as conn:
         result = conn.execute(text(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name='posting_settings' AND column_name='schedule_mode'"
         ))
-        if not result.fetchone():
-            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_mode VARCHAR(20) DEFAULT '120min' NOT NULL"))
-            conn.commit()
-            app_logger.info("posting_settings.schedule_mode を追加しました")
+        if result.fetchone():
+            return False
+        conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_mode VARCHAR(20) DEFAULT '120min' NOT NULL"))
+        conn.commit()
+        app_logger.info("posting_settings.schedule_mode を追加しました")
+        return True
 
-            # 旧設定（news_settings.schedule_mode、旧ニュース機能が無効だとUIから変更不能だった）を
-            # 移行時に一度だけ引き継ぐ
-            result = conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='news_settings' AND column_name='schedule_mode'"
-            ))
-            if result.fetchone():
-                conn.execute(text(
-                    "UPDATE posting_settings SET schedule_mode = "
-                    "(SELECT schedule_mode FROM news_settings LIMIT 1) "
-                    "WHERE EXISTS (SELECT 1 FROM news_settings)"
-                ))
-                conn.commit()
-                app_logger.info("news_settings.schedule_mode を posting_settings.schedule_mode に引き継ぎました")
+
+def _backfill_posting_settings_schedule_mode():
+    """旧設定（news_settings.schedule_mode、旧ニュース機能が無効だとUIから変更不能だった）を
+    移行時に一度だけ引き継ぐ。posting_settingsに行が存在している状態（_seed_posting_settings()の後）
+    で呼び出すこと。"""
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='news_settings' AND column_name='schedule_mode'"
+        ))
+        if not result.fetchone():
+            return
+        conn.execute(text(
+            "UPDATE posting_settings SET schedule_mode = "
+            "(SELECT schedule_mode FROM news_settings LIMIT 1) "
+            "WHERE EXISTS (SELECT 1 FROM news_settings)"
+        ))
+        conn.commit()
+        app_logger.info("news_settings.schedule_mode を posting_settings.schedule_mode に引き継ぎました")
 
 
 def _migrate_news_settings_table():
@@ -258,8 +268,10 @@ async def lifespan(app: FastAPI):
     _migrate_news_settings_table()
     _seed_news_data()
     _migrate_news_sources_v2()
+    posting_settings_col_added = _add_posting_settings_columns()
     _seed_posting_settings()
-    _migrate_posting_settings_table()
+    if posting_settings_col_added:
+        _backfill_posting_settings_schedule_mode()
     _recover_scheduled_tweets()
     _cleanup_old_images()
     if settings.legacy_news_feature_enabled:
