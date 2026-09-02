@@ -15,6 +15,7 @@ from app.routers import apikeys as apikeys_router
 from app.routers import posting as posting_router
 from app.routers import rate_limit as rate_limit_router
 from app.routers import features as features_router
+from app.routers import tor as tor_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -67,6 +68,34 @@ def _migrate_tweets_table():
             conn.execute(text("ALTER TABLE tweets ALTER COLUMN content TYPE VARCHAR(1024)"))
             conn.commit()
             app_logger.info("tweets.content を VARCHAR(1024) に拡張しました")
+
+
+def _migrate_tor_columns():
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+            "WHERE t.typname='tweetstatus' AND e.enumlabel='failed'"
+        ))
+        if not result.fetchone():
+            conn.execute(text("ALTER TYPE tweetstatus ADD VALUE IF NOT EXISTS 'failed'"))
+            conn.commit()
+            app_logger.info("tweetstatus に 'failed' を追加しました")
+
+        for col, definition in [
+            ("error_code", "VARCHAR(50)"),
+            ("error_message", "TEXT"),
+            ("retry_attempt", "INTEGER DEFAULT 0 NOT NULL"),
+            ("failed_at", "TIMESTAMPTZ"),
+            ("posted_via_tor", "BOOLEAN DEFAULT false NOT NULL"),
+        ]:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='tweets' AND column_name=:col"
+            ), {"col": col})
+            if not result.fetchone():
+                conn.execute(text(f"ALTER TABLE tweets ADD COLUMN {col} {definition}"))
+                conn.commit()
+                app_logger.info(f"tweets.{col} を追加しました")
 
 
 def _migrate_news_settings_table():
@@ -190,8 +219,15 @@ def _cleanup_old_images():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services import posting_mode
+    app_logger.info(
+        f"posting_mode loaded from .env: DEFAULT_POSTING_MODE={posting_mode.get_default_mode()} "
+        f"current_posting_mode={posting_mode.get_mode()}"
+    )
+
     Base.metadata.create_all(bind=engine)
     _migrate_tweets_table()
+    _migrate_tor_columns()
     _migrate_news_settings_table()
     _seed_news_data()
     _migrate_news_sources_v2()
@@ -233,6 +269,7 @@ app.include_router(apikeys_router.router)
 app.include_router(posting_router.router)
 app.include_router(rate_limit_router.router)
 app.include_router(features_router.router)
+app.include_router(tor_router.router)
 
 
 @app.get("/health")

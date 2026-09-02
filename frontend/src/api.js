@@ -47,6 +47,7 @@ export const api = {
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
+  reschedule: (id) => request('POST', `/queue/${id}/reschedule`),
   searchNews: (tweetId, search_pattern, exclude_urls) =>
     request('POST', `/tweets/${tweetId}/news/search`, { search_pattern, exclude_urls }),
   attachNews: (tweetId, url) => request('POST', `/tweets/${tweetId}/news/attach`, { url }),
@@ -91,6 +92,11 @@ export const api = {
   // 投稿設定
   getPostingSettings: () => request('GET', '/settings/posting/'),
   updatePostingSettings: (daily_schedule_limit) => request('PUT', '/settings/posting/', { daily_schedule_limit }),
+  getPostingMode: () => request('GET', '/settings/posting/mode'),
+  updatePostingMode: (posting_mode) => request('PUT', '/settings/posting/mode', { posting_mode }),
+  // Tor
+  torStatus: () => request('GET', '/tor/status'),
+  torRestart: () => request('POST', '/tor/restart'),
   // APIキー設定
   getApiKeys: () => request('GET', '/settings/apikeys'),
   getApiKeysRaw: () => request('GET', '/settings/apikeys/raw'),

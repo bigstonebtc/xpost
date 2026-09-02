@@ -16,6 +16,12 @@ class Settings(BaseSettings):
 
     legacy_news_feature_enabled: bool = False
 
+    # --- Tor 経由投稿 ---
+    posting_mode: str = "tor"  # tor / direct（Docker起動時のデフォルト値）
+    tor_proxy: str = "socks5h://tor:9050"
+    tor_timeout: int = 60
+    tor_compose_service: str = "tor"  # docker restart 対象（com.docker.compose.serviceラベルで検索）
+
     class Config:
         env_file = "/app/conf/env.conf"
         env_file_encoding = "utf-8"

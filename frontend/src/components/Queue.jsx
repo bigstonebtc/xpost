@@ -4,6 +4,8 @@ import { api } from '../api'
 
 const s = {
   card: { background: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
+  cardFailed: { border: '2px solid #e53e3e' },
+  failedBadge: { display: 'inline-block', fontSize: '12px', color: '#e53e3e', fontWeight: 'bold', marginBottom: '8px' },
   text: { fontSize: '15px', lineHeight: '1.6', marginBottom: '10px', whiteSpace: 'pre-wrap' },
   meta: { fontSize: '12px', color: '#999', marginBottom: '8px' },
   btnRow: { display: 'flex', gap: '8px' },
@@ -19,6 +21,11 @@ const s = {
   newsMeta: { fontSize: '13px', color: '#555', marginBottom: '2px' },
   newsSummary: { fontSize: '13px', marginTop: '8px', marginBottom: '8px', lineHeight: '1.5' },
   newsErr: { fontSize: '13px', color: '#e53e3e' },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modal: { background: '#fff', padding: '20px', width: '100%', maxWidth: '420px', borderRadius: '8px' },
+  modalTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '14px' },
+  detailRow: { fontSize: '13px', marginBottom: '8px', lineHeight: '1.6', wordBreak: 'break-word' },
+  detailLabel: { color: '#888', marginRight: '6px' },
 }
 
 const ATTACHED_URL_RE = /(?:^|\n)(https?:\/\/\S+)\s*$/
@@ -42,8 +49,10 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [newsResult, setNewsResult] = useState(null)
   const [newsPattern, setNewsPattern] = useState(0)
   const [newsExcludeUrls, setNewsExcludeUrls] = useState([])
+  const [showDetail, setShowDetail] = useState(false)
 
   const isScheduled = tweet.status === 'scheduled'
+  const isFailed = tweet.status === 'failed'
   const charCount = editText.length
   const over = charCount > 1024
   const hasNewsUrl = hasAttachedNewsUrl(tweet.content)
@@ -70,9 +79,14 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
   const handlePost = async () => {
     setLoading(true)
-    try { await api.post(tweet.id); onRefresh() }
-    catch (e) { alert(e.message) }
-    finally { setLoading(false) }
+    try {
+      await api.post(tweet.id)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      onRefresh()
+      setLoading(false)
+    }
   }
 
   const handleSchedule = async () => {
@@ -92,6 +106,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const handleDiscard = async () => {
     setLoading(true)
     try { await api.discard(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const handleReschedule = async () => {
+    setLoading(true)
+    try { await api.reschedule(tweet.id); onRefresh() }
     catch (e) { alert(e.message) }
     finally { setLoading(false) }
   }
@@ -214,7 +235,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   }
 
   return (
-    <div style={s.card}>
+    <div style={isFailed ? { ...s.card, ...s.cardFailed } : s.card}>
       <input
         type="file"
         accept="image/jpeg,image/png,image/gif,image/webp"
@@ -238,6 +259,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
         </>
       ) : (
         <>
+          {isFailed && <div style={s.failedBadge}>⚠ 投稿失敗</div>}
           <div style={s.text}>{tweet.content}</div>
           <div style={s.meta}>{tweet.content.length}文字</div>
           {imagePreviewUrl && (
@@ -247,7 +269,29 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
               style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '8px' }}
             />
           )}
-          {isScheduled ? (
+          {isFailed ? (
+            <>
+              <div style={s.btnRow}>
+                <button style={s.btn('#718096')} onClick={() => setShowDetail(true)} disabled={loading}>詳細</button>
+                <button style={s.btn('#38a169')} onClick={handleReschedule} disabled={loading}>Reschedule</button>
+                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>削除</button>
+              </div>
+              {showDetail && (
+                <div style={s.overlay} onClick={e => e.target === e.currentTarget && setShowDetail(false)}>
+                  <div style={s.modal}>
+                    <div style={s.modalTitle}>Error Details</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Error Code:</span>{tweet.error_code || '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Message:</span>{tweet.error_message || '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Failed at:</span>{tweet.failed_at ? new Date(tweet.failed_at).toLocaleString('ja-JP') : '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Attempts:</span>{tweet.retry_attempt ?? 0}/3</div>
+                    <div style={s.btnRow}>
+                      <button style={s.btn('#718096')} onClick={() => setShowDetail(false)}>Close</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : isScheduled ? (
             <>
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
               <div style={{ ...s.btnRow, marginTop: '8px' }}>

@@ -14,6 +14,7 @@ from app.dependencies import get_current_user
 from app.logger import posting_logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
+from app.services.poster import post_tweet_with_retry
 from app.services.scheduler import schedule_tweet
 from app.utils.rate_limit import RateLimitExceeded, format_message
 
@@ -62,9 +63,13 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
     from sqlalchemy import asc, nulls_last
     tweets = (
         db.query(Tweet)
-        .filter(Tweet.status.in_([TweetStatus.queued, TweetStatus.scheduled]))
+        .filter(Tweet.status.in_([TweetStatus.queued, TweetStatus.scheduled, TweetStatus.failed]))
         .order_by(
-            case((Tweet.status == TweetStatus.queued, 0), else_=1),
+            case(
+                (Tweet.status == TweetStatus.queued, 0),
+                (Tweet.status == TweetStatus.failed, 1),
+                else_=2,
+            ),
             nulls_last(asc(Tweet.scheduled_at)),
             Tweet.id.asc()
         )
@@ -75,31 +80,73 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 @router.post("/{tweet_id}/post")
 def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    from app.services.poster import post_tweet as _post_to_x
-    tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
+    tweet = db.query(Tweet).filter(
+        Tweet.id == tweet_id,
+        Tweet.status.in_([TweetStatus.queued, TweetStatus.failed]),
+    ).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+
+    image_path = tweet.image_path
     try:
-        image_path = tweet.image_path
         started_at = time.monotonic()
-        x_id = _post_to_x(tweet.content, image_path)
+        result = post_tweet_with_retry(tweet.content, image_path, tweet_id=tweet_id)
         elapsed = time.monotonic() - started_at
-        tweet.status = TweetStatus.posted
-        tweet.posted_at = datetime.now(timezone.utc)
-        tweet.x_tweet_id = x_id
-        tweet.image_path = None
+
+        if result.ok:
+            tweet.status = TweetStatus.posted
+            tweet.posted_at = datetime.now(timezone.utc)
+            tweet.x_tweet_id = result.x_tweet_id
+            tweet.posted_via_tor = result.posted_via_tor
+            tweet.image_path = None
+            tweet.error_code = None
+            tweet.error_message = None
+            tweet.retry_attempt = result.retry_attempt
+            db.commit()
+            if image_path:
+                Path(image_path).unlink(missing_ok=True)
+            posting_logger.info(
+                f"posted tweet_id={tweet_id} x_id={result.x_tweet_id} posted_via_tor={result.posted_via_tor} "
+                f"in {elapsed:.1f}s"
+            )
+            return {"ok": True, "x_tweet_id": result.x_tweet_id}
+
+        tweet.status = TweetStatus.failed
+        tweet.error_code = result.error_code
+        tweet.error_message = result.error_message
+        tweet.retry_attempt = result.retry_attempt
+        tweet.posted_via_tor = result.posted_via_tor
+        tweet.failed_at = datetime.now(timezone.utc)
         db.commit()
-        if image_path:
-            Path(image_path).unlink(missing_ok=True)
-        posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
-        return {"ok": True, "x_tweet_id": x_id}
+        raise HTTPException(status_code=502, detail=f"{result.error_code}: {result.error_message}")
+
     except RateLimitExceeded as e:
         db.rollback()
         raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         posting_logger.error(f"posting failed tweet_id={tweet_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{tweet_id}/reschedule")
+def reschedule_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """failedのツイートを再びキュー(queued)に戻す。自動リトライは行わず、
+    ユーザーが改めて[投稿]または[Schedule]を押す想定（仕様：自動リトライなし）。"""
+    tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.failed).first()
+    if not tweet:
+        raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+
+    tweet.status = TweetStatus.queued
+    tweet.error_code = None
+    tweet.error_message = None
+    tweet.retry_attempt = 0
+    tweet.failed_at = None
+    db.commit()
+    posting_logger.info(f"tweet_id={tweet_id} rescheduled: status=queued")
+    return {"ok": True}
 
 
 @router.post("/{tweet_id}/schedule")
@@ -153,7 +200,7 @@ def unschedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depend
 def discard_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     tweet = db.query(Tweet).filter(
         Tweet.id == tweet_id,
-        Tweet.status.in_([TweetStatus.queued, TweetStatus.scheduled])
+        Tweet.status.in_([TweetStatus.queued, TweetStatus.scheduled, TweetStatus.failed])
     ).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")

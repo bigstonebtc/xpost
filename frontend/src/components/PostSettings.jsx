@@ -10,6 +10,14 @@ const styles = {
   radioDesc: { fontSize: '12px', color: '#888', marginTop: '2px' },
   errMsg: { color: '#dc3545', fontSize: '13px', marginTop: '8px' },
   successMsg: { color: '#198754', fontSize: '13px', marginTop: '8px' },
+  statusRow: { display: 'flex', gap: '8px', fontSize: '14px', marginBottom: '6px' },
+  statusLabel: { color: '#888', minWidth: '110px' },
+  badgeOk: { color: '#198754', fontWeight: 'bold' },
+  badgeErr: { color: '#dc3545', fontWeight: 'bold' },
+  btnRow: { display: 'flex', gap: '8px', marginTop: '14px' },
+  secondaryBtn: { padding: '8px 16px', background: '#fff', color: '#1a1a2e', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
+  note: { fontSize: '12px', color: '#888', marginTop: '10px', lineHeight: '1.6' },
+  warnBadge: { color: '#dd8800', fontWeight: 'bold' },
 }
 
 export default function PostSettings() {
@@ -22,6 +30,17 @@ export default function PostSettings() {
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [limitMsg, setLimitMsg] = useState({ type: '', text: '' })
 
+  const [torStatus, setTorStatus] = useState(null)
+  const [torChecking, setTorChecking] = useState(false)
+  const [torRestarting, setTorRestarting] = useState(false)
+  const [torMsg, setTorMsg] = useState({ type: '', text: '' })
+
+  const [postingMode, setPostingMode] = useState('tor')
+  const [defaultMode, setDefaultMode] = useState('tor')
+  const [modeNote, setModeNote] = useState('')
+  const [savingMode, setSavingMode] = useState(false)
+  const [modeMsg, setModeMsg] = useState({ type: '', text: '' })
+
   const load = useCallback(async () => {
     try {
       const [newsData, postingData] = await Promise.all([api.newsSettings(), api.getPostingSettings()])
@@ -30,6 +49,9 @@ export default function PostSettings() {
         setSavedSettings(newsData.general)
       }
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
+      setPostingMode(postingData.posting_mode || 'tor')
+      setDefaultMode(postingData.default_mode || 'tor')
+      setModeNote(postingData.note || '')
     } catch (e) {
       setMsg({ type: 'err', text: e.message })
     } finally {
@@ -38,6 +60,49 @@ export default function PostSettings() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { checkTorStatus() }, [])
+
+  const checkTorStatus = async () => {
+    setTorChecking(true)
+    try {
+      const s = await api.torStatus()
+      setTorStatus(s)
+    } catch (e) {
+      setTorMsg({ type: 'err', text: e.message })
+    } finally {
+      setTorChecking(false)
+    }
+  }
+
+  const restartTor = async () => {
+    if (!confirm('Torコンテナを再起動しますか？（数十秒かかります）')) return
+    setTorRestarting(true)
+    setTorMsg({ type: '', text: '' })
+    try {
+      const s = await api.torRestart()
+      setTorStatus(s)
+      setTorMsg({ type: 'ok', text: '再起動しました ✓' })
+    } catch (e) {
+      setTorMsg({ type: 'err', text: e.message })
+    } finally {
+      setTorRestarting(false)
+    }
+  }
+
+  const saveMode = async () => {
+    setSavingMode(true)
+    setModeMsg({ type: '', text: '' })
+    try {
+      const res = await api.updatePostingMode(postingMode)
+      setDefaultMode(res.default_mode)
+      setModeNote(res.note)
+      setModeMsg({ type: 'ok', text: res.message })
+    } catch (e) {
+      setModeMsg({ type: 'err', text: e.message })
+    } finally {
+      setSavingMode(false)
+    }
+  }
 
   const flash = (type, text) => {
     setMsg({ type, text })
@@ -97,6 +162,70 @@ export default function PostSettings() {
   return (
     <div>
       {msg.text && <p style={msg.type === 'ok' ? styles.successMsg : styles.errMsg}>{msg.text}</p>}
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Tor Service</div>
+        <div style={styles.statusRow}>
+          <span style={styles.statusLabel}>Status:</span>
+          {torStatus
+            ? <span style={torStatus.tor_connected ? styles.badgeOk : styles.badgeErr}>
+                {torStatus.tor_connected ? 'Active' : 'Error'}
+              </span>
+            : <span style={{ color: '#888' }}>{torChecking ? '確認中...' : '未確認'}</span>}
+        </div>
+        <div style={styles.statusRow}>
+          <span style={styles.statusLabel}>Exit IP:</span>
+          <span>{torStatus?.exit_ip || '—'}</span>
+        </div>
+        <div style={styles.statusRow}>
+          <span style={styles.statusLabel}>Last Checked:</span>
+          <span>{torStatus?.last_verified_at ? new Date(torStatus.last_verified_at).toLocaleString('ja-JP') : '—'}</span>
+        </div>
+        {torStatus && !torStatus.tor_connected && torStatus.error && (
+          <p style={styles.errMsg}>{torStatus.error}</p>
+        )}
+        {torMsg.text && <p style={torMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{torMsg.text}</p>}
+        <div style={styles.btnRow}>
+          <button style={styles.secondaryBtn} onClick={checkTorStatus} disabled={torChecking || torRestarting}>
+            {torChecking ? '確認中...' : 'Check Status'}
+          </button>
+          <button style={styles.secondaryBtn} onClick={restartTor} disabled={torChecking || torRestarting}>
+            {torRestarting ? '再起動中...' : 'Restart'}
+          </button>
+        </div>
+        <p style={styles.note}>Torが起動していない・出口IPを確認できない場合、投稿は一切実行されません。</p>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Posting Mode</div>
+        <p style={{ fontSize: '13px', color: '#555', marginBottom: '4px' }}>
+          現在の設定：{postingMode === 'tor' ? 'Tor Mode' : 'Direct Mode'}
+        </p>
+        <div style={styles.radioRow}>
+          <label style={styles.radioLabel}>
+            <input type="radio" name="postingMode" value="tor" checked={postingMode === 'tor'} onChange={() => setPostingMode('tor')} />
+            <div>
+              <div>Tor Mode（推奨）</div>
+              <div style={styles.radioDesc}>Tor ネットワーク経由で投稿します</div>
+            </div>
+          </label>
+          <label style={styles.radioLabel}>
+            <input type="radio" name="postingMode" value="direct" checked={postingMode === 'direct'} onChange={() => setPostingMode('direct')} />
+            <div>
+              <div>Direct Mode（緊急用） <span style={styles.warnBadge}>⚠️</span></div>
+              <div style={styles.radioDesc}>Tor を経由せず直接投稿します。VPS の IP が X に記録されます。</div>
+            </div>
+          </label>
+        </div>
+        {modeMsg.text && <p style={modeMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{modeMsg.text}</p>}
+        <button style={styles.saveBtn} onClick={saveMode} disabled={savingMode}>
+          {savingMode ? '保存中...' : '保存'}
+        </button>
+        <p style={styles.note}>
+          デフォルト：{defaultMode === 'tor' ? 'Tor Mode' : 'Direct Mode'}（.env の POSTING_MODE）<br />
+          {modeNote || 'Docker 再起動でデフォルト値に戻ります'}
+        </p>
+      </div>
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>キュー設定</div>
