@@ -98,6 +98,33 @@ def _migrate_tor_columns():
                 app_logger.info(f"tweets.{col} を追加しました")
 
 
+def _migrate_posting_settings_table():
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='posting_settings' AND column_name='schedule_mode'"
+        ))
+        if not result.fetchone():
+            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_mode VARCHAR(20) DEFAULT '120min' NOT NULL"))
+            conn.commit()
+            app_logger.info("posting_settings.schedule_mode を追加しました")
+
+            # 旧設定（news_settings.schedule_mode、旧ニュース機能が無効だとUIから変更不能だった）を
+            # 移行時に一度だけ引き継ぐ
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='news_settings' AND column_name='schedule_mode'"
+            ))
+            if result.fetchone():
+                conn.execute(text(
+                    "UPDATE posting_settings SET schedule_mode = "
+                    "(SELECT schedule_mode FROM news_settings LIMIT 1) "
+                    "WHERE EXISTS (SELECT 1 FROM news_settings)"
+                ))
+                conn.commit()
+                app_logger.info("news_settings.schedule_mode を posting_settings.schedule_mode に引き継ぎました")
+
+
 def _migrate_news_settings_table():
     with engine.connect() as conn:
         for col, definition in [
@@ -232,6 +259,7 @@ async def lifespan(app: FastAPI):
     _seed_news_data()
     _migrate_news_sources_v2()
     _seed_posting_settings()
+    _migrate_posting_settings_table()
     _recover_scheduled_tweets()
     _cleanup_old_images()
     if settings.legacy_news_feature_enabled:

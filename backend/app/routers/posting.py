@@ -10,9 +10,15 @@ from app.services import posting_mode
 
 router = APIRouter(prefix="/settings/posting", tags=["posting"])
 
+VALID_SCHEDULE_MODES = ("120min", "24h_daytime", "72h", "120h")
+
 
 class PostingSettingsUpdate(BaseModel):
     daily_schedule_limit: int
+
+
+class ScheduleModeUpdate(BaseModel):
+    schedule_mode: str
 
 
 def _mode_note() -> str:
@@ -22,9 +28,9 @@ def _mode_note() -> str:
 @router.get("/")
 def get_posting_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
     ps = db.query(PostingSettings).first()
-    daily_schedule_limit = ps.daily_schedule_limit if ps else 10
     return {
-        "daily_schedule_limit": daily_schedule_limit,
+        "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
+        "schedule_mode": ps.schedule_mode if ps else "120min",
         "posting_mode": posting_mode.get_mode(),
         "default_mode": posting_mode.get_default_mode(),
         "note": _mode_note(),
@@ -39,6 +45,18 @@ def update_posting_settings(body: PostingSettingsUpdate, db: Session = Depends(g
     if not ps:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
     ps.daily_schedule_limit = body.daily_schedule_limit
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/schedule-mode")
+def update_schedule_mode(body: ScheduleModeUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    if body.schedule_mode not in VALID_SCHEDULE_MODES:
+        raise HTTPException(status_code=400, detail="schedule_mode は '120min' / '24h_daytime' / '72h' / '120h' を指定してください")
+    ps = db.query(PostingSettings).first()
+    if not ps:
+        raise HTTPException(status_code=404, detail="設定が見つかりません")
+    ps.schedule_mode = body.schedule_mode
     db.commit()
     return {"ok": True}
 

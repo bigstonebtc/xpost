@@ -22,7 +22,6 @@ const styles = {
 
 export default function PostSettings() {
   const [scheduleMode, setScheduleMode] = useState('120min')
-  const [savedSettings, setSavedSettings] = useState(null)
   const [dailyLimit, setDailyLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -43,12 +42,9 @@ export default function PostSettings() {
 
   const load = useCallback(async () => {
     try {
-      const [newsData, postingData] = await Promise.all([api.newsSettings(), api.getPostingSettings()])
-      if (newsData.general) {
-        setScheduleMode(newsData.general.schedule_mode || '120min')
-        setSavedSettings(newsData.general)
-      }
+      const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
+      setScheduleMode(postingData.schedule_mode || '120min')
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')
       setModeNote(postingData.note || '')
@@ -132,16 +128,9 @@ export default function PostSettings() {
   }
 
   const save = async () => {
-    if (!savedSettings) return
     setSaving(true)
     try {
-      await api.newsUpdateGeneral(
-        savedSettings.fetch_limit_per_run,
-        null,
-        scheduleMode,
-        savedSettings.news_prompt_file,
-      )
-      setSavedSettings(prev => ({ ...prev, schedule_mode: scheduleMode }))
+      await api.updateScheduleMode(scheduleMode)
       flash('ok', '保存しました')
     } catch (e) {
       flash('err', e.message)
@@ -267,7 +256,7 @@ export default function PostSettings() {
             </label>
           ))}
         </div>
-        <button style={styles.saveBtn} onClick={save} disabled={saving || !savedSettings}>
+        <button style={styles.saveBtn} onClick={save} disabled={saving}>
           {saving ? '保存中...' : '保存'}
         </button>
       </div>

@@ -151,13 +151,12 @@ def reschedule_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get
 
 @router.post("/{tweet_id}/schedule")
 def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    from app.models.news import NewsSettings
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
 
-    ns = db.query(NewsSettings).first()
-    mode = ns.schedule_mode if ns else "120min"
+    ps = db.query(PostingSettings).first()
+    mode = ps.schedule_mode if ps else "120min"
 
     if mode == "24h_daytime":
         base_dt = _random_daytime_schedule(24)
@@ -169,7 +168,6 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
         delay_minutes = random.randint(1, 120)
         base_dt = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
 
-    ps = db.query(PostingSettings).first()
     daily_limit = ps.daily_schedule_limit if ps else 10
     scheduled_at = _find_available_datetime(base_dt, daily_limit, db)
 
