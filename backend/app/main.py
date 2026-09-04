@@ -105,34 +105,54 @@ def _add_posting_settings_columns() -> bool:
     with engine.connect() as conn:
         result = conn.execute(text(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='posting_settings' AND column_name='schedule_mode'"
+            "WHERE table_name='posting_settings' AND column_name='schedule_hours'"
         ))
         if result.fetchone():
             return False
-        conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_mode VARCHAR(20) DEFAULT '120min' NOT NULL"))
+        conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_hours INTEGER DEFAULT 24 NOT NULL"))
         conn.commit()
-        app_logger.info("posting_settings.schedule_mode を追加しました")
+        app_logger.info("posting_settings.schedule_hours を追加しました")
         return True
 
 
-def _backfill_posting_settings_schedule_mode():
-    """旧設定（news_settings.schedule_mode、旧ニュース機能が無効だとUIから変更不能だった）を
-    移行時に一度だけ引き継ぐ。posting_settingsに行が存在している状態（_seed_posting_settings()の後）
-    で呼び出すこと。"""
+_SCHEDULE_MODE_TO_HOURS = {
+    "120min": 24,  # 新しい最小値(24時間)未満だったため繰り上げ
+    "24h_daytime": 24,
+    "72h": 72,
+    "120h": 120,
+}
+
+
+def _backfill_posting_settings_schedule_hours():
+    """旧設定（選択式のschedule_mode）を時間数(schedule_hours)へ移行時に一度だけ引き継ぐ。
+    posting_settings.schedule_mode（無ければ news_settings.schedule_mode）を参照する。
+    posting_settingsに行が存在している状態（_seed_posting_settings()の後）で呼び出すこと。"""
     with engine.connect() as conn:
+        old_mode = None
         result = conn.execute(text(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='news_settings' AND column_name='schedule_mode'"
+            "WHERE table_name='posting_settings' AND column_name='schedule_mode'"
         ))
-        if not result.fetchone():
+        if result.fetchone():
+            row = conn.execute(text("SELECT schedule_mode FROM posting_settings LIMIT 1")).fetchone()
+            old_mode = row[0] if row else None
+
+        if old_mode is None:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='news_settings' AND column_name='schedule_mode'"
+            ))
+            if result.fetchone():
+                row = conn.execute(text("SELECT schedule_mode FROM news_settings LIMIT 1")).fetchone()
+                old_mode = row[0] if row else None
+
+        if old_mode is None:
             return
-        conn.execute(text(
-            "UPDATE posting_settings SET schedule_mode = "
-            "(SELECT schedule_mode FROM news_settings LIMIT 1) "
-            "WHERE EXISTS (SELECT 1 FROM news_settings)"
-        ))
+
+        hours = _SCHEDULE_MODE_TO_HOURS.get(old_mode, 24)
+        conn.execute(text("UPDATE posting_settings SET schedule_hours = :hours"), {"hours": hours})
         conn.commit()
-        app_logger.info("news_settings.schedule_mode を posting_settings.schedule_mode に引き継ぎました")
+        app_logger.info(f"旧schedule_mode={old_mode!r} を schedule_hours={hours} に引き継ぎました")
 
 
 def _migrate_news_settings_table():
@@ -271,7 +291,7 @@ async def lifespan(app: FastAPI):
     posting_settings_col_added = _add_posting_settings_columns()
     _seed_posting_settings()
     if posting_settings_col_added:
-        _backfill_posting_settings_schedule_mode()
+        _backfill_posting_settings_schedule_hours()
     _recover_scheduled_tweets()
     _cleanup_old_images()
     if settings.legacy_news_feature_enabled:

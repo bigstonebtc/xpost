@@ -20,8 +20,11 @@ const styles = {
   warnBadge: { color: '#dd8800', fontWeight: 'bold' },
 }
 
+const SCHEDULE_HOURS_MIN = 24
+const SCHEDULE_HOURS_MAX = 720
+
 export default function PostSettings() {
-  const [scheduleMode, setScheduleMode] = useState('120min')
+  const [scheduleHours, setScheduleHours] = useState(24)
   const [dailyLimit, setDailyLimit] = useState(10)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -44,7 +47,7 @@ export default function PostSettings() {
     try {
       const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
-      setScheduleMode(postingData.schedule_mode || '120min')
+      setScheduleHours(postingData.schedule_hours ?? 24)
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')
       setModeNote(postingData.note || '')
@@ -128,9 +131,14 @@ export default function PostSettings() {
   }
 
   const save = async () => {
+    const val = Number(scheduleHours)
+    if (!Number.isInteger(val) || val < SCHEDULE_HOURS_MIN || val > SCHEDULE_HOURS_MAX) {
+      flash('err', `${SCHEDULE_HOURS_MIN}〜${SCHEDULE_HOURS_MAX}の整数で指定してください`)
+      return
+    }
     setSaving(true)
     try {
-      await api.updateScheduleMode(scheduleMode)
+      await api.updateScheduleHours(val)
       flash('ok', '保存しました')
     } catch (e) {
       flash('err', e.message)
@@ -140,13 +148,6 @@ export default function PostSettings() {
   }
 
   if (loading) return <p style={{ color: '#888', textAlign: 'center', marginTop: '40px' }}>読み込み中...</p>
-
-  const modes = [
-    { value: '120min', label: '120分以内にランダム投稿', desc: 'Scheduleボタンを押してから最大120分以内にランダムなタイミングで投稿' },
-    { value: '24h_daytime', label: '24時間以内・日中（JST 7:00〜20:00）にランダム投稿', desc: '向こう24時間以内の朝7時〜夜8時の範囲でランダムなタイミングで投稿' },
-    { value: '72h', label: '72時間以内にランダム投稿', desc: 'Scheduleボタンを押してから最大72時間以内にランダムなタイミングで投稿' },
-    { value: '120h', label: '120時間以内にランダム投稿', desc: 'Scheduleボタンを押してから最大120時間以内にランダムなタイミングで投稿' },
-  ]
 
   return (
     <div>
@@ -239,22 +240,23 @@ export default function PostSettings() {
             {savingLimit ? '保存中...' : '保存'}
           </button>
         </div>
-        <div style={styles.radioRow}>
-          {modes.map(m => (
-            <label key={m.value} style={styles.radioLabel}>
-              <input
-                type="radio"
-                name="scheduleMode"
-                value={m.value}
-                checked={scheduleMode === m.value}
-                onChange={() => setScheduleMode(m.value)}
-              />
-              <div>
-                <div>{m.label}</div>
-                <div style={styles.radioDesc}>{m.desc}</div>
-              </div>
-            </label>
-          ))}
+        <div style={{ padding: '12px 0' }}>
+          <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: '500' }}>投稿タイミング</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input
+              type="number"
+              min={SCHEDULE_HOURS_MIN}
+              max={SCHEDULE_HOURS_MAX}
+              step="1"
+              value={scheduleHours}
+              onChange={e => setScheduleHours(e.target.value)}
+              style={{ width: '80px', padding: '7px 10px', border: '1px solid #aaa', borderRadius: '4px', fontSize: '14px' }}
+            />
+            <span style={{ fontSize: '13px', color: '#555' }}>時間以内にランダム投稿</span>
+          </div>
+          <p style={styles.note}>
+            指定した時間内で、日中（JST 7:00〜20:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
+          </p>
         </div>
         <button style={styles.saveBtn} onClick={save} disabled={saving}>
           {saving ? '保存中...' : '保存'}

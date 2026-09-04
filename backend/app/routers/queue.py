@@ -45,6 +45,9 @@ def _find_available_datetime(base_dt: datetime, daily_limit: int, db: Session) -
 
 
 def _random_daytime_schedule(hours: int = 24) -> datetime:
+    """指定時間内でJST日中（7:00〜20:00）のランダムな時刻を返す。
+    指定時間が短く窓内に日中枠が無い場合（例: 夜間に1時間指定）は、
+    日中制約を優先し、直近の日中枠（翌日以降）まで探す。"""
     now_jst = datetime.now(JST)
     end_window = now_jst + timedelta(hours=hours)
     slots = []
@@ -53,8 +56,16 @@ def _random_daytime_schedule(hours: int = 24) -> datetime:
         if 7 <= t.hour < 20:
             slots.append(t)
         t += timedelta(minutes=1)
+
     if not slots:
-        return datetime.now(timezone.utc) + timedelta(hours=1)
+        while not (7 <= t.hour < 20):
+            t += timedelta(minutes=1)
+        end_of_day = t.replace(hour=20, minute=0, second=0, microsecond=0)
+        while t <= end_of_day:
+            if 7 <= t.hour < 20:
+                slots.append(t)
+            t += timedelta(minutes=1)
+
     return random.choice(slots).astimezone(timezone.utc)
 
 
@@ -156,17 +167,8 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
 
     ps = db.query(PostingSettings).first()
-    mode = ps.schedule_mode if ps else "120min"
-
-    if mode == "24h_daytime":
-        base_dt = _random_daytime_schedule(24)
-    elif mode == "72h":
-        base_dt = _random_daytime_schedule(72)
-    elif mode == "120h":
-        base_dt = _random_daytime_schedule(120)
-    else:
-        delay_minutes = random.randint(1, 120)
-        base_dt = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+    schedule_hours = ps.schedule_hours if ps else 24
+    base_dt = _random_daytime_schedule(schedule_hours)
 
     daily_limit = ps.daily_schedule_limit if ps else 10
     scheduled_at = _find_available_datetime(base_dt, daily_limit, db)
