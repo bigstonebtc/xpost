@@ -24,7 +24,7 @@ const SCHEDULE_HOURS_MIN = 24
 const SCHEDULE_HOURS_MAX = 720
 
 export default function PostSettings() {
-  const [scheduleHours, setScheduleHours] = useState(24)
+  const [scheduleHours, setScheduleHours] = useState(120)
   const [dailyLimit, setDailyLimit] = useState(10)
   const [allowOver140, setAllowOver140] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -50,7 +50,7 @@ export default function PostSettings() {
     try {
       const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
-      setScheduleHours(postingData.schedule_hours ?? 24)
+      setScheduleHours(postingData.schedule_hours ?? 120)
       setAllowOver140(postingData.allow_over_140 ?? true)
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')

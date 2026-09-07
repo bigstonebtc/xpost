@@ -35,7 +35,7 @@ def get_posting_settings(db: Session = Depends(get_db), user: str = Depends(get_
     ps = db.query(PostingSettings).first()
     return {
         "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
-        "schedule_hours": ps.schedule_hours if ps else 24,
+        "schedule_hours": ps.schedule_hours if ps else 120,
         "allow_over_140": ps.allow_over_140 if ps else True,
         "posting_mode": posting_mode.get_mode(user),
         "default_mode": posting_mode.get_default_mode(user),
