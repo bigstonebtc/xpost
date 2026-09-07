@@ -8,7 +8,7 @@ const s = {
   modeInfo: { fontSize: '13px', color: '#718096', marginBottom: '16px' },
   failedBadge: { display: 'inline-block', fontSize: '12px', color: '#e53e3e', fontWeight: 'bold', marginBottom: '8px' },
   text: { fontSize: '15px', lineHeight: '1.6', marginBottom: '10px', whiteSpace: 'pre-wrap' },
-  meta: { fontSize: '12px', color: '#999', marginBottom: '8px' },
+  meta: (over) => ({ fontSize: '12px', color: over ? '#e53e3e' : '#999', marginBottom: '8px' }),
   btnRow: { display: 'flex', gap: '8px' },
   btn: (color) => ({ padding: '6px 14px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', background: color, color: '#fff', fontWeight: 'bold' }),
   textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '160px', fontFamily: 'inherit', boxSizing: 'border-box' },
@@ -262,7 +262,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
         <>
           {isFailed && <div style={s.failedBadge}>⚠ 投稿失敗</div>}
           <div style={s.text}>{tweet.content}</div>
-          <div style={s.meta}>{tweet.content.length}文字</div>
+          <div style={s.meta(tweet.content.length > 140)}>{tweet.content.length}文字</div>
           {imagePreviewUrl && (
             <img
               src={imagePreviewUrl}
