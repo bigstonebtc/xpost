@@ -295,8 +295,8 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
             <>
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
               <div style={{ ...s.btnRow, marginTop: '8px' }}>
-                <button style={s.btn('#718096')} onClick={handleUnschedule} disabled={loading}>戻す</button>
-                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>削除</button>
+                <button style={s.btn('#718096')} onClick={handleUnschedule} disabled={loading}>unschedule</button>
+                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>delete</button>
               </div>
             </>
           ) : (
