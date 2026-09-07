@@ -15,8 +15,6 @@ services:
       tor:
         condition: service_healthy
     volumes:
-      - ./data:/app/data:ro
-      - ./tweetsource:/app/tweetsource:ro
       # 各ユーザーの設定・DB・プロンプト・資料・ログは /home/<user>/xpost/ 以下にあり、
       # backendは単一プロセスで全ユーザー分をこのマウント経由で読み書きする
       # （共有プログラムモード。詳細はdocs/multi_user_design.md参照）。

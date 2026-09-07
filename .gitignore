@@ -7,10 +7,6 @@ conf/prompts/relevance.conf
 
 # 素材ドキュメント・仕様書（VPS上のみ保管）
 docs/
-data/*
-!data/.gitkeep
-tweetsource/*
-!tweetsource/.gitkeep
 logs/*
 !logs/.gitkeep
 nginx/certs/
