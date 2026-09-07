@@ -7,9 +7,10 @@
 #   1. Linuxユーザー作成（既存ならスキップ）
 #   2. /home/<user>/xpost/{conf,prompts,documents,logs,db} を作成
 #   3. env.conf を env.conf.example からコピー（既存なら上書きしない）
-#   4. ADMIN_PASSWORD_HASH / SECRET_KEY を自動生成・追記（既存フィールドは上書きしない）
-#   5. ファイル権限を設定
-#   6. 初期パスワードを表示
+#   4. news_search.prompt をテンプレートからコピー（既存なら上書きしない）
+#   5. ADMIN_PASSWORD_HASH / SECRET_KEY を自動生成・追記（既存フィールドは上書きしない）
+#   6. ファイル権限を設定
+#   7. 初期パスワードを表示
 #
 # 実行後は backend の再起動が必要（新規ユーザーをconfigキャッシュに反映するため）:
 #   docker compose restart backend
@@ -32,6 +33,7 @@ PASSWORD="$2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_EXAMPLE="$APP_ROOT/env.conf.example"
+NEWS_SEARCH_PROMPT_TEMPLATE="$SCRIPT_DIR/templates/news_search.prompt"
 
 if [ ! -f "$ENV_EXAMPLE" ]; then
   echo "テンプレートが見つかりません: $ENV_EXAMPLE" >&2
@@ -61,15 +63,26 @@ else
   echo "env.conf をテンプレートから作成しました: $ENV_CONF"
 fi
 
-# 4. 認証キーの自動生成・追記（冪等）
+# 4. news_search.prompt 処理（既存なら上書きしない）
+NEWS_SEARCH_PROMPT="$XPOST_HOME/prompts/news_search.prompt"
+if [ -f "$NEWS_SEARCH_PROMPT" ]; then
+  echo "news_search.prompt は既に存在します（上書きしません）: $NEWS_SEARCH_PROMPT"
+elif [ -f "$NEWS_SEARCH_PROMPT_TEMPLATE" ]; then
+  cp "$NEWS_SEARCH_PROMPT_TEMPLATE" "$NEWS_SEARCH_PROMPT"
+  echo "news_search.prompt をテンプレートから作成しました: $NEWS_SEARCH_PROMPT"
+else
+  echo "news_search.prompt のテンプレートが見つかりません（スキップ、コード側のフォールバックが使われます）: $NEWS_SEARCH_PROMPT_TEMPLATE"
+fi
+
+# 5. 認証キーの自動生成・追記（冪等）
 python3 "$SCRIPT_DIR/gen_user_secrets.py" "$ENV_CONF" "$PASSWORD"
 
-# 5. ファイル権限設定
+# 6. ファイル権限設定
 chown -R "$USERNAME:$USERNAME" "$XPOST_HOME"
 chmod 700 "$XPOST_HOME/conf"
 chmod 600 "$ENV_CONF"
 
-# 6. 初期パスワード表示
+# 7. 初期パスワード表示
 echo "─────────────────────────────────"
 echo "User created: $USERNAME"
 echo "Initial password: $PASSWORD"
