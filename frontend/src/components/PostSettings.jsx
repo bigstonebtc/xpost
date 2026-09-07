@@ -222,14 +222,15 @@ export default function PostSettings() {
               <div style={styles.radioDesc}>Tor ネットワーク経由で投稿します</div>
             </div>
           </label>
-          <label style={styles.radioLabel}>
-            <input type="radio" name="postingMode" value="direct" checked={postingMode === 'direct'} onChange={() => setPostingMode('direct')} />
+          <label style={{ ...styles.radioLabel, opacity: 0.5, cursor: 'not-allowed' }}>
+            <input type="radio" name="postingMode" value="direct" checked={postingMode === 'direct'} disabled />
             <div>
               <div>Direct Mode（緊急用） <span style={styles.warnBadge}>⚠️</span></div>
               <div style={styles.radioDesc}>Tor を経由せず直接投稿します。VPS の IP が X に記録されます。</div>
             </div>
           </label>
         </div>
+        <p style={styles.note}>Direct ModeへのUIからの切り替えは現在無効化されています。</p>
         {modeMsg.text && <p style={modeMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{modeMsg.text}</p>}
         <button style={styles.saveBtn} onClick={saveMode} disabled={savingMode}>
           {savingMode ? '保存中...' : '保存'}
