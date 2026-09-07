@@ -5,11 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.dependencies import get_current_user
+from app.paths import documents_dir, prompts_dir
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
-
-PROMPTS_DIR = Path("/app/prompts")
-DOCUMENTS_DIR = Path("/app/documents")
 
 _VALID_FILENAME = re.compile(r"^[^\\/\x00-\x1f]+\.prompt$")
 _UNSAFE_FILENAME_CHARS = re.compile(r"[\\/\x00-\x1f]")
@@ -18,9 +16,9 @@ _DOCUMENTS_LINE = re.compile(r"^documents\s*=\s*(.*)$")
 _VISIBLE_LINE = re.compile(r"^visible\s*=\s*(.*)$")
 
 
-def _ensure_dirs():
-    PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
-    DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
+def _ensure_dirs(user_id: str):
+    prompts_dir(user_id).mkdir(parents=True, exist_ok=True)
+    documents_dir(user_id).mkdir(parents=True, exist_ok=True)
 
 
 def _slugify(name: str) -> str:
@@ -86,10 +84,10 @@ class PromptUpdate(BaseModel):
 
 
 @router.get("/")
-def list_prompts(visible_only: bool = False, _=Depends(get_current_user)):
-    _ensure_dirs()
+def list_prompts(visible_only: bool = False, user: str = Depends(get_current_user)):
+    _ensure_dirs(user)
     result = []
-    for p in sorted(PROMPTS_DIR.glob("*.prompt")):
+    for p in sorted(prompts_dir(user).glob("*.prompt")):
         try:
             result.append(_parse_prompt_file(p))
         except Exception:
@@ -100,25 +98,25 @@ def list_prompts(visible_only: bool = False, _=Depends(get_current_user)):
 
 
 @router.get("/{filename}")
-def get_prompt(filename: str, _=Depends(get_current_user)):
+def get_prompt(filename: str, user: str = Depends(get_current_user)):
     if not _VALID_FILENAME.match(filename):
         raise HTTPException(status_code=400, detail="無効なファイル名です")
-    path = PROMPTS_DIR / filename
+    path = prompts_dir(user) / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
     return _parse_prompt_file(path)
 
 
 @router.post("/", status_code=201)
-def create_prompt(payload: PromptCreate, _=Depends(get_current_user)):
-    _ensure_dirs()
+def create_prompt(payload: PromptCreate, user: str = Depends(get_current_user)):
+    _ensure_dirs(user)
     if not payload.name or len(payload.name) > 50:
         raise HTTPException(status_code=400, detail="プロンプト名は1〜50文字で入力してください")
     if not payload.body.strip():
         raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
 
     filename = _slugify(payload.name) + ".prompt"
-    path = PROMPTS_DIR / filename
+    path = prompts_dir(user) / filename
     if path.exists():
         raise HTTPException(status_code=409, detail=f"{filename} は既に存在します")
 
@@ -127,7 +125,7 @@ def create_prompt(payload: PromptCreate, _=Depends(get_current_user)):
 
 
 @router.put("/{filename}")
-def update_prompt(filename: str, payload: PromptUpdate, _=Depends(get_current_user)):
+def update_prompt(filename: str, payload: PromptUpdate, user: str = Depends(get_current_user)):
     if not _VALID_FILENAME.match(filename):
         raise HTTPException(status_code=400, detail="無効なファイル名です")
     if not payload.name or len(payload.name) > 50:
@@ -135,7 +133,7 @@ def update_prompt(filename: str, payload: PromptUpdate, _=Depends(get_current_us
     if not payload.body.strip():
         raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
 
-    path = PROMPTS_DIR / filename
+    path = prompts_dir(user) / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
 
@@ -144,17 +142,17 @@ def update_prompt(filename: str, payload: PromptUpdate, _=Depends(get_current_us
 
 
 @router.delete("/{filename}", status_code=204)
-def delete_prompt(filename: str, _=Depends(get_current_user)):
+def delete_prompt(filename: str, user: str = Depends(get_current_user)):
     if not _VALID_FILENAME.match(filename):
         raise HTTPException(status_code=400, detail="無効なファイル名です")
-    path = PROMPTS_DIR / filename
+    path = prompts_dir(user) / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
     path.unlink()
 
 
 @router.get("/documents/list")
-def list_documents(_=Depends(get_current_user)):
-    _ensure_dirs()
-    files = [f.name for f in sorted(DOCUMENTS_DIR.iterdir()) if f.is_file()]
+def list_documents(user: str = Depends(get_current_user)):
+    _ensure_dirs(user)
+    files = [f.name for f in sorted(documents_dir(user).iterdir()) if f.is_file()]
     return {"documents": files}

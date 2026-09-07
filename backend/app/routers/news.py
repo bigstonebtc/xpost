@@ -39,9 +39,9 @@ def clear_ai_skipped(db: Session = Depends(get_db), _=Depends(get_current_user))
 
 
 @router.post("/fetch")
-def fetch_news(background_tasks: BackgroundTasks, _=Depends(get_current_user)):
+def fetch_news(background_tasks: BackgroundTasks, user: str = Depends(get_current_user)):
     from app.services.news_fetcher import fetch_and_process
-    background_tasks.add_task(fetch_and_process)
+    background_tasks.add_task(fetch_and_process, user)
     return {"message": "取得を開始しました"}
 
 
@@ -109,13 +109,13 @@ def fetch_debug(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 
 @router.post("/{item_id}/add-to-queue")
-def add_to_queue(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def add_to_queue(item_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     item = db.query(NewsItem).filter(NewsItem.id == item_id, NewsItem.status == "pending").first()
     if not item:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
 
     try:
-        tweet_text = generate_tweet_from_news(item.title, item.summary or "")
+        tweet_text = generate_tweet_from_news(user, item.title, item.summary or "")
     except RateLimitExceeded as e:
         raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
     item.tweet_text = tweet_text
@@ -145,12 +145,12 @@ def skip_news(item_id: int, db: Session = Depends(get_db), _=Depends(get_current
 
 
 @router.post("/{item_id}/regenerate")
-def regenerate_tweet(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def regenerate_tweet(item_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     item = db.query(NewsItem).filter(NewsItem.id == item_id, NewsItem.status == "pending").first()
     if not item:
         raise HTTPException(status_code=404, detail="記事が見つかりません")
     try:
-        tweet_text = generate_tweet_from_news(item.title, item.summary or "")
+        tweet_text = generate_tweet_from_news(user, item.title, item.summary or "")
     except RateLimitExceeded as e:
         raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
     item.tweet_text = tweet_text

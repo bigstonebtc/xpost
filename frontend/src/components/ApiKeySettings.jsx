@@ -32,6 +32,10 @@ export default function ApiKeySettings() {
   const [saving, setSaving] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
+  const [newPw, setNewPw] = useState('')
+  const [newPwConfirm, setNewPwConfirm] = useState('')
+  const [changingPw, setChangingPw] = useState(false)
+  const [pwMsg, setPwMsg] = useState({ type: '', text: '' })
 
   useEffect(() => {
     api.getApiKeys().then(data => {
@@ -70,11 +74,39 @@ export default function ApiKeySettings() {
     setSaving(true)
     try {
       await api.updateApiKeys(values)
-      flash('ok', '保存しました ✓ 反映するには再起動してください')
+      flash('ok', '保存しました ✓ 再起動なしで反映されます')
     } catch {
       flash('err', '保存に失敗しました。ファイルの書き込み権限を確認してください')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const flashPw = (type, text) => {
+    setPwMsg({ type, text })
+    setTimeout(() => setPwMsg({ type: '', text: '' }), 6000)
+  }
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (newPw.length < 8) {
+      flashPw('err', 'パスワードは8文字以上にしてください')
+      return
+    }
+    if (newPw !== newPwConfirm) {
+      flashPw('err', '新しいパスワードが一致しません')
+      return
+    }
+    setChangingPw(true)
+    try {
+      await api.changePassword(newPw, newPwConfirm)
+      setNewPw('')
+      setNewPwConfirm('')
+      flashPw('ok', 'パスワードを変更しました（次回ログインから有効です）')
+    } catch (e) {
+      flashPw('err', e.message || 'パスワードの変更に失敗しました')
+    } finally {
+      setChangingPw(false)
     }
   }
 
@@ -115,7 +147,36 @@ export default function ApiKeySettings() {
         <button style={s.saveBtn} onClick={handleSave} disabled={saving || !rawLoaded}>
           {saving ? '保存中...' : '保存'}
         </button>
-        <p style={s.notice}>⚠️ 保存後、設定を反映するには再起動が必要です</p>
+      </div>
+
+      <div style={s.section}>
+        <div style={s.title}>パスワード変更</div>
+        <form onSubmit={handleChangePassword}>
+          <div style={s.row}>
+            <span style={s.label}>新しいパスワード</span>
+            <input
+              style={s.input}
+              type="password"
+              value={newPw}
+              onChange={e => setNewPw(e.target.value)}
+              autoComplete="new-password"
+            />
+          </div>
+          <div style={s.row}>
+            <span style={s.label}>新しいパスワード（確認）</span>
+            <input
+              style={s.input}
+              type="password"
+              value={newPwConfirm}
+              onChange={e => setNewPwConfirm(e.target.value)}
+              autoComplete="new-password"
+            />
+          </div>
+          {pwMsg.text && <p style={pwMsg.type === 'ok' ? s.okMsg : s.errMsg}>{pwMsg.text}</p>}
+          <button style={s.saveBtn} type="submit" disabled={changingPw}>
+            {changingPw ? '変更中...' : 'パスワードを変更'}
+          </button>
+        </form>
       </div>
 
       <div style={s.section}>

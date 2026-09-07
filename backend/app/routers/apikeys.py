@@ -1,17 +1,19 @@
 import os
 import threading
 import time
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.dependencies import get_current_user
+from app.env_file import read_env_file, upsert_env_values
+from app.paths import env_conf_path
+from app.services.poster import invalidate_client
+from app.user_registry import update_user_config_fields
 
 router = APIRouter(prefix="/settings", tags=["apikeys"])
 
-ENV_PATH = Path("/app/conf/env.conf")
 TARGET_KEYS = [
     "X_CONSUMER_KEY",
     "X_CONSUMER_SECRET",
@@ -20,18 +22,13 @@ TARGET_KEYS = [
     "ANTHROPIC_API_KEY",
 ]
 
-
-def _read_env() -> dict:
-    result = {}
-    if not ENV_PATH.exists():
-        return result
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        result[key.strip()] = value.strip()
-    return result
+_CONFIG_FIELD_MAP = {
+    "X_CONSUMER_KEY": "x_consumer_key",
+    "X_CONSUMER_SECRET": "x_consumer_secret",
+    "X_ACCESS_TOKEN": "x_access_token",
+    "X_ACCESS_TOKEN_SECRET": "x_access_token_secret",
+    "ANTHROPIC_API_KEY": "anthropic_api_key",
+}
 
 
 def _mask(value: str) -> str:
@@ -39,14 +36,14 @@ def _mask(value: str) -> str:
 
 
 @router.get("/apikeys")
-def get_apikeys(_=Depends(get_current_user)):
-    env = _read_env()
+def get_apikeys(user: str = Depends(get_current_user)):
+    env = read_env_file(env_conf_path(user))
     return {k: _mask(env.get(k, "")) for k in TARGET_KEYS}
 
 
 @router.get("/apikeys/raw")
-def get_apikeys_raw(_=Depends(get_current_user)):
-    env = _read_env()
+def get_apikeys_raw(user: str = Depends(get_current_user)):
+    env = read_env_file(env_conf_path(user))
     return {k: env.get(k, "") for k in TARGET_KEYS}
 
 
@@ -59,8 +56,9 @@ class ApiKeyUpdate(BaseModel):
 
 
 @router.put("/apikeys")
-def update_apikeys(body: ApiKeyUpdate, _=Depends(get_current_user)):
-    if not ENV_PATH.exists():
+def update_apikeys(body: ApiKeyUpdate, user: str = Depends(get_current_user)):
+    path = env_conf_path(user)
+    if not path.exists():
         raise HTTPException(status_code=500, detail="設定ファイルが見つかりません")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -68,22 +66,24 @@ def update_apikeys(body: ApiKeyUpdate, _=Depends(get_current_user)):
         return {"ok": True}
 
     try:
-        lines = ENV_PATH.read_text(encoding="utf-8").splitlines(keepends=True)
-        new_lines = []
-        for line in lines:
-            key = line.split("=")[0].strip()
-            if key in updates:
-                new_lines.append(f"{key}={updates[key]}\n")
-            else:
-                new_lines.append(line)
-        ENV_PATH.write_text("".join(new_lines), encoding="utf-8")
-        return {"ok": True}
+        upsert_env_values(path, updates)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ファイルの書き込みに失敗しました: {e}")
+
+    # ファイルとメモリキャッシュを同時に更新し、backend再起動なしで即時反映する。
+    config_updates = {_CONFIG_FIELD_MAP[k]: v for k, v in updates.items()}
+    update_user_config_fields(user, **config_updates)
+    if any(k != "ANTHROPIC_API_KEY" for k in updates):
+        # X APIキーが変わった場合は、古いキーで作られたtweepyクライアントを破棄する
+        invalidate_client(user)
+    return {"ok": True}
 
 
 @router.post("/restart")
 def restart_app(_=Depends(get_current_user)):
+    # backendは全ユーザー共有の単一プロセスのため、この操作は他ユーザーにも影響する
+    # （数秒程度の再接続待ちが発生する）。APIキー変更自体はupdate_apikeysで既に
+    # 再起動なしで反映されるため、通常はこのエンドポイントを呼ぶ必要はない。
     def _kill():
         time.sleep(1)
         os._exit(0)

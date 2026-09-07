@@ -38,6 +38,8 @@ export const api = {
     return fetch(`${BASE}/auth/login`, { method: 'POST', body: form })
       .then(r => r.ok ? r.json() : Promise.reject('認証失敗'))
   },
+  changePassword: (new_password, new_password_confirm) =>
+    request('PUT', '/auth/password', { new_password, new_password_confirm }),
   stats: () => request('GET', '/history/stats'),
   rateLimitUsage: () => request('GET', '/rate-limit/usage'),
   features: () => request('GET', '/features/'),

@@ -2,10 +2,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from app.config import settings
-from app.database import engine, Base, SessionLocal
-from app.logger import app_logger
+
+from app.database import Base, get_engine, session_for
+from app.logger import system_logger
 from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
@@ -16,16 +15,17 @@ from app.routers import posting as posting_router
 from app.routers import rate_limit as rate_limit_router
 from app.routers import features as features_router
 from app.routers import tor as tor_router
+from app.user_registry import load_all_users, users_config
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
 
 
-def _recover_scheduled_tweets():
+def _recover_scheduled_tweets(user_id: str) -> None:
     from app.models.tweet import Tweet, TweetStatus
     from app.services.scheduler import schedule_tweet
 
-    db = SessionLocal()
+    db = session_for(user_id)
     try:
         now = datetime.now(timezone.utc)
         pending = db.query(Tweet).filter(Tweet.status == TweetStatus.scheduled).all()
@@ -37,159 +37,19 @@ def _recover_scheduled_tweets():
                 run_at = run_at.replace(tzinfo=timezone.utc)
             if run_at <= now:
                 run_at = now + timedelta(minutes=1)
-            schedule_tweet(tweet.id, run_at)
-            app_logger.info(f"tweet_id={tweet.id} を再スケジュール: {run_at}")
+            schedule_tweet(user_id, tweet.id, run_at)
+            system_logger.info(f"user={user_id} tweet_id={tweet.id} を再スケジュール: {run_at}")
     finally:
         db.close()
 
 
-def _migrate_tweets_table():
-    with engine.connect() as conn:
-        for col, definition in [
-            ("source_type", "VARCHAR(20) DEFAULT 'manual'"),
-            ("news_item_id", "INTEGER"),
-            ("image_path", "VARCHAR(500)"),
-        ]:
-            result = conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='tweets' AND column_name=:col"
-            ), {"col": col})
-            if not result.fetchone():
-                conn.execute(text(f"ALTER TABLE tweets ADD COLUMN {col} {definition}"))
-                conn.commit()
-                app_logger.info(f"tweets.{col} を追加しました")
-
-        result = conn.execute(text(
-            "SELECT character_maximum_length FROM information_schema.columns "
-            "WHERE table_name='tweets' AND column_name='content'"
-        ))
-        row = result.fetchone()
-        if row and row[0] != 1024:
-            conn.execute(text("ALTER TABLE tweets ALTER COLUMN content TYPE VARCHAR(1024)"))
-            conn.commit()
-            app_logger.info("tweets.content を VARCHAR(1024) に拡張しました")
-
-
-def _migrate_tor_columns():
-    with engine.connect() as conn:
-        result = conn.execute(text(
-            "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
-            "WHERE t.typname='tweetstatus' AND e.enumlabel='failed'"
-        ))
-        if not result.fetchone():
-            conn.execute(text("ALTER TYPE tweetstatus ADD VALUE IF NOT EXISTS 'failed'"))
-            conn.commit()
-            app_logger.info("tweetstatus に 'failed' を追加しました")
-
-        for col, definition in [
-            ("error_code", "VARCHAR(50)"),
-            ("error_message", "TEXT"),
-            ("retry_attempt", "INTEGER DEFAULT 0 NOT NULL"),
-            ("failed_at", "TIMESTAMPTZ"),
-            ("posted_via_tor", "BOOLEAN DEFAULT false NOT NULL"),
-        ]:
-            result = conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='tweets' AND column_name=:col"
-            ), {"col": col})
-            if not result.fetchone():
-                conn.execute(text(f"ALTER TABLE tweets ADD COLUMN {col} {definition}"))
-                conn.commit()
-                app_logger.info(f"tweets.{col} を追加しました")
-
-
-def _add_posting_settings_columns() -> bool:
-    """posting_settingsに不足列を追加する。ORM(PostingSettingsモデル)がこの列を
-    参照するため、_seed_posting_settings()より前に必ず実行する必要がある。
-    schedule_hoursを新規に追加した場合はTrueを返す（追加直後のみバックフィルするための判定用）。"""
-    with engine.connect() as conn:
-        result = conn.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='posting_settings' AND column_name='schedule_hours'"
-        ))
-        schedule_hours_added = False
-        if not result.fetchone():
-            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_hours INTEGER DEFAULT 24 NOT NULL"))
-            conn.commit()
-            app_logger.info("posting_settings.schedule_hours を追加しました")
-            schedule_hours_added = True
-
-        result = conn.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='posting_settings' AND column_name='allow_over_140'"
-        ))
-        if not result.fetchone():
-            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN allow_over_140 BOOLEAN DEFAULT true NOT NULL"))
-            conn.commit()
-            app_logger.info("posting_settings.allow_over_140 を追加しました")
-
-        return schedule_hours_added
-
-
-_SCHEDULE_MODE_TO_HOURS = {
-    "120min": 24,  # 新しい最小値(24時間)未満だったため繰り上げ
-    "24h_daytime": 24,
-    "72h": 72,
-    "120h": 120,
-}
-
-
-def _backfill_posting_settings_schedule_hours():
-    """旧設定（選択式のschedule_mode）を時間数(schedule_hours)へ移行時に一度だけ引き継ぐ。
-    posting_settings.schedule_mode（無ければ news_settings.schedule_mode）を参照する。
-    posting_settingsに行が存在している状態（_seed_posting_settings()の後）で呼び出すこと。"""
-    with engine.connect() as conn:
-        old_mode = None
-        result = conn.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='posting_settings' AND column_name='schedule_mode'"
-        ))
-        if result.fetchone():
-            row = conn.execute(text("SELECT schedule_mode FROM posting_settings LIMIT 1")).fetchone()
-            old_mode = row[0] if row else None
-
-        if old_mode is None:
-            result = conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='news_settings' AND column_name='schedule_mode'"
-            ))
-            if result.fetchone():
-                row = conn.execute(text("SELECT schedule_mode FROM news_settings LIMIT 1")).fetchone()
-                old_mode = row[0] if row else None
-
-        if old_mode is None:
-            return
-
-        hours = _SCHEDULE_MODE_TO_HOURS.get(old_mode, 24)
-        conn.execute(text("UPDATE posting_settings SET schedule_hours = :hours"), {"hours": hours})
-        conn.commit()
-        app_logger.info(f"旧schedule_mode={old_mode!r} を schedule_hours={hours} に引き継ぎました")
-
-
-def _migrate_news_settings_table():
-    with engine.connect() as conn:
-        for col, definition in [
-            ("schedule_mode", "VARCHAR(20) DEFAULT '120min'"),
-            ("news_prompt_file", "VARCHAR(255) DEFAULT 'news_comment.prompt'"),
-        ]:
-            result = conn.execute(text(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='news_settings' AND column_name=:col"
-            ), {"col": col})
-            if not result.fetchone():
-                conn.execute(text(f"ALTER TABLE news_settings ADD COLUMN {col} {definition}"))
-                conn.commit()
-                app_logger.info(f"news_settings.{col} を追加しました")
-
-
-def _seed_news_data():
+def _seed_news_data(user_id: str) -> None:
     from app.models.news import NewsSource, FetchSchedule, NewsSettings
 
-    db = SessionLocal()
+    db = session_for(user_id)
     try:
         if db.query(NewsSource).count() == 0:
             # ===== 旧プリセット（一時無効化 / 復活可能） =====
-            # 以下のソースを復活させる場合は is_enabled=True に変更してください
             presets = [
                 ("NHK経済", "https://www.nhk.or.jp/rss/news/cat4.xml", "経済", False),
                 ("産経ニュース", "https://www.sankei.com/economy/rss/", "経済", False),
@@ -201,32 +61,27 @@ def _seed_news_data():
             for name, url, category, enabled in presets:
                 db.add(NewsSource(name=name, url=url, category=category, is_enabled=enabled, is_preset=True))
             # ===== /旧プリセット =====
-            app_logger.info("news_sources を初期化しました（旧プリセットは無効状態）")
 
         if db.query(FetchSchedule).count() == 0:
             for slot, hour, enabled in [(1, 7, True), (2, 12, True), (3, 17, True), (4, 21, False)]:
                 db.add(FetchSchedule(slot_number=slot, hour=hour, is_enabled=enabled))
-            app_logger.info("fetch_schedules を初期化しました")
 
         if db.query(NewsSettings).count() == 0:
             db.add(NewsSettings(fetch_limit_per_run=20))
-            app_logger.info("news_settings を初期化しました")
 
         db.commit()
     finally:
         db.close()
 
 
-def _migrate_news_sources_v2():
-    """既存ソースを無効化し、Google News / はてなブックマークソースを追加する（冪等）"""
+def _ensure_news_sources_v2(user_id: str) -> None:
+    """旧プリセットを無効化し、Google News / はてなブックマークソースを用意する（冪等）"""
     from app.models.news import NewsSource
 
-    db = SessionLocal()
+    db = session_for(user_id)
     try:
-        # 旧プリセット（is_preset=True）を全件無効化
         db.query(NewsSource).filter(NewsSource.is_preset == True).update({"is_enabled": False})
 
-        # 新ソース（is_preset=False / ユーザー管理）を追加（重複チェックあり）
         new_sources = [
             ("Google News - 相続税・減税",
              "https://news.google.com/rss/search?q=%E7%9B%B8%E7%B6%9A%E7%A8%8E+%E6%B8%9B%E7%A8%8E&hl=ja&gl=JP&ceid=JP:ja",
@@ -252,27 +107,25 @@ def _migrate_news_sources_v2():
             if not exists:
                 db.add(NewsSource(name=name, url=url, category=category,
                                   is_enabled=True, is_preset=False))
-                app_logger.info(f"ソース追加: {name}")
 
         db.commit()
     finally:
         db.close()
 
 
-def _seed_posting_settings():
+def _seed_posting_settings(user_id: str) -> None:
     from app.models.posting import PostingSettings
 
-    db = SessionLocal()
+    db = session_for(user_id)
     try:
         if db.query(PostingSettings).count() == 0:
             db.add(PostingSettings(daily_schedule_limit=10))
             db.commit()
-            app_logger.info("posting_settings を初期化しました")
     finally:
         db.close()
 
 
-def _cleanup_old_images():
+def _cleanup_old_images() -> None:
     from pathlib import Path
     import time
     images_dir = Path("/tmp/xpost_images")
@@ -282,34 +135,42 @@ def _cleanup_old_images():
     for f in images_dir.iterdir():
         if f.is_file() and f.stat().st_mtime < cutoff:
             f.unlink(missing_ok=True)
-            app_logger.info(f"古い一時画像を削除: {f.name}")
+            system_logger.info(f"古い一時画像を削除: {f.name}")
+
+
+def _init_user(user_id: str) -> None:
+    from app.services import posting_mode
+    from app.services.scheduler import setup_news_fetch_jobs
+
+    cfg = users_config[user_id]
+    engine = get_engine(user_id)
+    Base.metadata.create_all(bind=engine)
+
+    _seed_news_data(user_id)
+    _ensure_news_sources_v2(user_id)
+    _seed_posting_settings(user_id)
+    _recover_scheduled_tweets(user_id)
+
+    system_logger.info(
+        f"user={user_id} 初期化完了 posting_mode={posting_mode.get_mode(user_id)} "
+        f"legacy_news_feature_enabled={cfg.legacy_news_feature_enabled}"
+    )
+    if cfg.legacy_news_feature_enabled:
+        setup_news_fetch_jobs(user_id)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.services import posting_mode
-    app_logger.info(
-        f"posting_mode loaded from .env: DEFAULT_POSTING_MODE={posting_mode.get_default_mode()} "
-        f"current_posting_mode={posting_mode.get_mode()}"
-    )
+    loaded = load_all_users()
+    system_logger.info(f"読み込んだユーザー: {loaded or '(なし)'}")
 
-    Base.metadata.create_all(bind=engine)
-    _migrate_tweets_table()
-    _migrate_tor_columns()
-    _migrate_news_settings_table()
-    _seed_news_data()
-    _migrate_news_sources_v2()
-    posting_settings_col_added = _add_posting_settings_columns()
-    _seed_posting_settings()
-    if posting_settings_col_added:
-        _backfill_posting_settings_schedule_hours()
-    _recover_scheduled_tweets()
+    for user_id in loaded:
+        try:
+            _init_user(user_id)
+        except Exception as e:
+            system_logger.error(f"user={user_id} の初期化に失敗しました（このユーザーは利用不可）: {e}")
+
     _cleanup_old_images()
-    if settings.legacy_news_feature_enabled:
-        from app.services.scheduler import setup_news_fetch_jobs
-        setup_news_fetch_jobs()
-    else:
-        app_logger.info("旧ニュース機能は無効化されています（自動取得ジョブ未登録）")
     yield
 
 

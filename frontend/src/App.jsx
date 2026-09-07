@@ -23,17 +23,18 @@ const styles = {
 }
 
 function Login({ onLogin }) {
+  const [username, setUsername] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
 
   const submit = async (e) => {
     e.preventDefault()
     try {
-      const data = await api.login('admin', pw)
+      const data = await api.login(username, pw)
       setToken(data.access_token)
       onLogin()
     } catch {
-      setErr('パスワードが違います')
+      setErr('ユーザー名またはパスワードが違います')
     }
   }
 
@@ -41,7 +42,8 @@ function Login({ onLogin }) {
     <div style={styles.loginBox}>
       <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>xpost</h2>
       <form onSubmit={submit}>
-        <input style={styles.input} type="password" placeholder="パスワード" value={pw} onChange={e => setPw(e.target.value)} autoFocus />
+        <input style={styles.input} type="text" placeholder="ユーザー名" value={username} onChange={e => setUsername(e.target.value)} autoFocus autoCapitalize="off" autoCorrect="off" />
+        <input style={styles.input} type="password" placeholder="パスワード" value={pw} onChange={e => setPw(e.target.value)} />
         {err && <p style={{ color: 'red', marginBottom: '8px', fontSize: '14px' }}>{err}</p>}
         <button style={styles.btn} type="submit">ログイン</button>
       </form>

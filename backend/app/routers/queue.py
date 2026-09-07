@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.logger import posting_logger
+from app.logger import get_logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.services.poster import post_tweet_with_retry
@@ -77,7 +77,7 @@ def _random_daytime_schedule(hours: int = 24) -> datetime:
 
 
 @router.post("/reschedule-all")
-def reschedule_all(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def reschedule_all(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     """スケジュール済みの全ツイートを一旦解除し、現在の投稿タイミング設定で
     改めてランダムにスケジュールし直す。"""
     from app.services.scheduler import unschedule_tweet
@@ -87,7 +87,7 @@ def reschedule_all(db: Session = Depends(get_db), _=Depends(get_current_user)):
         return {"rescheduled": 0}
 
     for tweet in tweets:
-        unschedule_tweet(tweet.id)
+        unschedule_tweet(user, tweet.id)
         tweet.status = TweetStatus.queued
         tweet.scheduled_at = None
     db.commit()
@@ -102,9 +102,9 @@ def reschedule_all(db: Session = Depends(get_db), _=Depends(get_current_user)):
         tweet.status = TweetStatus.scheduled
         tweet.scheduled_at = scheduled_at
         db.commit()
-        schedule_tweet(tweet.id, scheduled_at)
+        schedule_tweet(user, tweet.id, scheduled_at)
 
-    posting_logger.info(f"reschedule_all: {len(tweets)}件を再スケジュールしました")
+    get_logger(user, "posting").info(f"reschedule_all: {len(tweets)}件を再スケジュールしました")
     return {"rescheduled": len(tweets)}
 
 
@@ -129,7 +129,8 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
 
 @router.post("/{tweet_id}/post")
-def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    posting_logger = get_logger(user, "posting")
     tweet = db.query(Tweet).filter(
         Tweet.id == tweet_id,
         Tweet.status.in_([TweetStatus.queued, TweetStatus.failed]),
@@ -141,7 +142,7 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
     image_path = tweet.image_path
     try:
         started_at = time.monotonic()
-        result = post_tweet_with_retry(tweet.content, image_path, tweet_id=tweet_id)
+        result = post_tweet_with_retry(user, tweet.content, image_path, tweet_id=tweet_id)
         elapsed = time.monotonic() - started_at
 
         if result.ok:
@@ -183,7 +184,7 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
 
 
 @router.post("/{tweet_id}/reschedule")
-def reschedule_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def reschedule_tweet(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     """failedのツイートを再びキュー(queued)に戻す。自動リトライは行わず、
     ユーザーが改めて[投稿]または[Schedule]を押す想定（仕様：自動リトライなし）。"""
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.failed).first()
@@ -196,12 +197,12 @@ def reschedule_tweet(tweet_id: int, db: Session = Depends(get_db), _=Depends(get
     tweet.retry_attempt = 0
     tweet.failed_at = None
     db.commit()
-    posting_logger.info(f"tweet_id={tweet_id} rescheduled: status=queued")
+    get_logger(user, "posting").info(f"tweet_id={tweet_id} rescheduled: status=queued")
     return {"ok": True}
 
 
 @router.post("/{tweet_id}/schedule")
-def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
@@ -218,20 +219,20 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
     tweet.status = TweetStatus.scheduled
     tweet.scheduled_at = scheduled_at
     db.commit()
-    schedule_tweet(tweet_id, scheduled_at)
+    schedule_tweet(user, tweet_id, scheduled_at)
 
     return {"scheduled_at": scheduled_at}
 
 
 @router.post("/{tweet_id}/unschedule")
-def unschedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def unschedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     from app.services.scheduler import unschedule_tweet
 
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.scheduled).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
 
-    unschedule_tweet(tweet_id)
+    unschedule_tweet(user, tweet_id)
     tweet.status = TweetStatus.queued
     tweet.scheduled_at = None
     db.commit()

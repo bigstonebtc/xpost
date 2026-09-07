@@ -4,19 +4,15 @@ import json
 import socket
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
-from pathlib import Path
 from typing import Optional
 
 import feedparser
 import anthropic
 
-from app.config import settings
-from app.logger import news_logger as logger
+from app.logger import get_logger
+from app.paths import relevance_prompt_path
+from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
-
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
-
-RELEVANCE_PROMPT_PATH = Path("/app/conf/prompts/relevance.conf")
 
 DEFAULT_PROMPT = (
     "以下の記事が「自由主義・相続税廃止・私有財産権・規制緩和」を訴えるXアカウントの\n"
@@ -27,9 +23,10 @@ DEFAULT_PROMPT = (
 )
 
 
-def load_relevance_prompt() -> str:
-    if RELEVANCE_PROMPT_PATH.exists():
-        return RELEVANCE_PROMPT_PATH.read_text(encoding="utf-8").strip()
+def load_relevance_prompt(user_id: str) -> str:
+    path = relevance_prompt_path(user_id)
+    if path.exists():
+        return path.read_text(encoding="utf-8").strip()
     return DEFAULT_PROMPT
 
 
@@ -62,10 +59,12 @@ def _is_recent(published_at: Optional[datetime]) -> bool:
     return (now - published_at) < timedelta(hours=48)
 
 
-def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
+def _ai_relevance_check(user_id: str, api_key: str, title: str, summary: str, prompt_template: str) -> bool:
+    logger = get_logger(user_id, "news")
     prompt = prompt_template.replace("{title}", title).replace("{summary}", summary or "（概要なし）")
     try:
-        check_and_record("anthropic")
+        check_and_record(user_id, "anthropic")
+        client = anthropic.Anthropic(api_key=api_key, timeout=30.0)
         # プリフィルで {"relevant": まで固定し、確実にJSONを返させる
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -87,12 +86,16 @@ def _ai_relevance_check(title: str, summary: str, prompt_template: str) -> bool:
         return False
 
 
-def fetch_and_process() -> dict:
-    from app.database import SessionLocal
+def fetch_and_process(user_id: str) -> dict:
+    from app.database import session_for
     from app.models.news import NewsSource, NewsSettings, NewsItem
     from app.services.writer import generate_tweet_from_news
 
-    db = SessionLocal()
+    logger = get_logger(user_id, "news")
+    cfg = get_user_config(user_id)
+    api_key = cfg.anthropic_api_key if cfg else ""
+
+    db = session_for(user_id)
     try:
         sources = db.query(NewsSource).filter(NewsSource.is_enabled == True).all()
         if not sources:
@@ -101,7 +104,7 @@ def fetch_and_process() -> dict:
 
         ns = db.query(NewsSettings).first()
         total_limit = ns.fetch_limit_per_run if ns else 20
-        prompt_template = load_relevance_prompt()
+        prompt_template = load_relevance_prompt(user_id)
         news_prompt_file = ns.news_prompt_file if ns else "news_comment.prompt"
 
         limit_per_source = math.ceil(total_limit / len(sources))
@@ -159,7 +162,7 @@ def fetch_and_process() -> dict:
                 stats["fetched"] += 1
                 count_this_source += 1
 
-                ai_relevant = _ai_relevance_check(title, summary, prompt_template)
+                ai_relevant = _ai_relevance_check(user_id, api_key, title, summary, prompt_template)
 
                 if not ai_relevant:
                     stats["skipped_ai"] += 1
@@ -176,7 +179,7 @@ def fetch_and_process() -> dict:
                     continue
 
                 try:
-                    tweet_text = generate_tweet_from_news(title, summary, prompt_file=news_prompt_file)
+                    tweet_text = generate_tweet_from_news(user_id, title, summary, prompt_file=news_prompt_file)
                 except RateLimitExceeded:
                     logger.warning(f"ツイート生成スキップ: anthropic レート制限超過 ({title[:30]})")
                     tweet_text = None
