@@ -5,6 +5,7 @@ import { api } from '../api'
 const s = {
   card: { background: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
   cardFailed: { border: '2px solid #e53e3e' },
+  modeInfo: { fontSize: '13px', color: '#718096', marginBottom: '16px' },
   failedBadge: { display: 'inline-block', fontSize: '12px', color: '#e53e3e', fontWeight: 'bold', marginBottom: '8px' },
   text: { fontSize: '15px', lineHeight: '1.6', marginBottom: '10px', whiteSpace: 'pre-wrap' },
   meta: { fontSize: '12px', color: '#999', marginBottom: '8px' },
@@ -364,10 +365,14 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 export default function Queue() {
   const [tweets, setTweets] = useState([])
   const [loading, setLoading] = useState(false)
+  const [scheduleHours, setScheduleHours] = useState(null)
 
   const load = () => api.queue().then(setTweets).catch(e => alert(e.message))
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    api.getPostingSettings().then(s => setScheduleHours(s.schedule_hours)).catch(() => {})
+  }, [])
 
   const handleClear = async () => {
     if (!confirm('キューを全件削除しますか？')) return
@@ -388,6 +393,9 @@ export default function Queue() {
           <Link to="/create" style={s.createLink}>ツイート作成画面へ →</Link>
         </div>
       </div>
+      {scheduleHours != null && (
+        <p style={s.modeInfo}>現在の投稿モード：{scheduleHours}時間内にランダムに投稿</p>
+      )}
       {tweets.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>キューが空です</p>}
       {tweets.map(t => <TweetCard key={t.id} tweet={t} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
     </div>
