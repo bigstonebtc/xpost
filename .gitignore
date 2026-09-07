@@ -15,6 +15,10 @@ logs/*
 !logs/.gitkeep
 nginx/certs/
 
+# プロンプトファイル（秘匿情報。サーバー上でアプリから随時編集されるためGit管理対象外）
+prompts/*
+!prompts/.gitkeep
+
 # Pythonキャッシュ
 __pycache__/
 *.py[cod]
