@@ -19,6 +19,10 @@ nginx/certs/
 prompts/*
 !prompts/.gitkeep
 
+# ユーザー個別資料（秘匿情報。サーバー上でユーザーが随時配置するためGit管理対象外）
+documents/*
+!documents/.gitkeep
+
 # Pythonキャッシュ
 __pycache__/
 *.py[cod]
