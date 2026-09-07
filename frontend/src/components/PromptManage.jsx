@@ -20,7 +20,7 @@ const s = {
   label: { fontSize: '13px', color: '#555', marginBottom: '4px', display: 'block' },
   input: { width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box', marginBottom: '12px' },
   textarea: { width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '13px', fontFamily: 'monospace', lineHeight: '1.6', resize: 'vertical', minHeight: '400px', flex: 1, boxSizing: 'border-box', marginBottom: '12px' },
-  checkboxList: { marginBottom: '12px', maxHeight: '160px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px', padding: '8px' },
+  checkboxList: { marginBottom: '12px', maxHeight: '160px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '6px', padding: '8px', flexShrink: 0 },
   checkboxRow: { display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 0', fontSize: '13px' },
   modalBtnRow: { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' },
   saveBtn: { padding: '8px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
@@ -28,14 +28,16 @@ const s = {
   errMsg: { color: '#e53e3e', fontSize: '13px', marginBottom: '8px' },
   warnMsg: { color: '#dd8800', fontSize: '13px', marginBottom: '8px' },
   empty: { color: '#999', textAlign: 'center', marginTop: '40px' },
+  hint: { color: '#aaa', marginLeft: '6px', fontWeight: 'normal' },
+  checkboxRowPlain: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', marginBottom: '12px' },
+  hiddenBadge: { display: 'inline-block', fontSize: '11px', color: '#888', background: '#f0f0f0', borderRadius: '4px', padding: '2px 6px', marginLeft: '8px' },
 }
 
 function PromptModal({ initial, documents, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || '')
   const [selectedDocs, setSelectedDocs] = useState(initial?.documents || [])
-  const [topics, setTopics] = useState(initial?.topics || '')
-  const [types, setTypes] = useState(initial?.types || '')
-  const [prompt, setPrompt] = useState(initial?.prompt || '')
+  const [visible, setVisible] = useState(initial ? initial.visible !== false : true)
+  const [body, setBody] = useState(initial?.body || '')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -45,16 +47,17 @@ function PromptModal({ initial, documents, onSave, onClose }) {
     )
   }
 
-  const topicWarning = prompt.includes('{topic}') && !topics.trim()
-  const typeWarning = prompt.includes('{type}') && !types.trim()
+  // ヒント表示のみの簡易チェック（保存データには影響しない）
+  const topicWarning = body.includes('{topic}') && !/^\s*topics\s*=/m.test(body)
+  const typeWarning = body.includes('{type}') && !/^\s*types\s*=/m.test(body)
 
   const handleSave = async () => {
     if (!name.trim()) { setErr('プロンプト名は必須です'); return }
     if (name.trim().length > 50) { setErr('プロンプト名は50文字以内です'); return }
-    if (!prompt.trim()) { setErr('プロンプト本文は必須です'); return }
+    if (!body.trim()) { setErr('プロンプト本文は必須です'); return }
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), documents: selectedDocs, topics, types, prompt: prompt.trim() })
+      await onSave({ name: name.trim(), documents: selectedDocs, visible, body })
     } catch (e) {
       setErr(e.message)
       setSaving(false)
@@ -83,16 +86,15 @@ function PromptModal({ initial, documents, onSave, onClose }) {
           }
         </div>
 
-        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span></label>
-        <textarea style={s.textarea} value={prompt} onChange={e => setPrompt(e.target.value)} spellCheck={false} />
+        <label style={s.checkboxRowPlain}>
+          <input type="checkbox" checked={visible} onChange={e => setVisible(e.target.checked)} />
+          ツイート作成画面に表示する
+        </label>
 
-        <label style={s.label}>論点リスト（任意）<span style={{ color: '#aaa', marginLeft: '6px', fontWeight: 'normal' }}>1行1論点。プロンプト本文に {'{topic}'} がある場合に使用</span></label>
+        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>入力した内容がそのまま保存されます（#コメント可）。論点リスト・型リストを使う場合は先頭に「topics =」「types =」（1行1項目、インデント）と「[prompt]」を書いてから本文を続けてください</span></label>
         {topicWarning && <p style={s.warnMsg}>⚠ 本文に {'{topic}'} がありますが、論点リストが空です</p>}
-        <textarea style={{ ...s.textarea, minHeight: '200px' }} value={topics} onChange={e => setTopics(e.target.value)} spellCheck={false} placeholder={'A1. 相続財産は...\nA2. 死亡は経済的付加価値を...'} />
-
-        <label style={s.label}>型リスト（任意）<span style={{ color: '#aaa', marginLeft: '6px', fontWeight: 'normal' }}>1行1型。プロンプト本文に {'{type}'} がある場合に使用</span></label>
         {typeWarning && <p style={s.warnMsg}>⚠ 本文に {'{type}'} がありますが、型リストが空です</p>}
-        <textarea style={{ ...s.textarea, minHeight: '120px' }} value={types} onChange={e => setTypes(e.target.value)} spellCheck={false} placeholder={'【問いかけ型】読者に疑問を投げかける\n【データ型】数字・統計を冒頭に出す'} />
+        <textarea style={s.textarea} value={body} onChange={e => setBody(e.target.value)} spellCheck={false} />
 
         <div style={s.modalBtnRow}>
           <button style={s.cancelBtn} onClick={onClose} disabled={saving}>キャンセル</button>
@@ -116,8 +118,8 @@ function PromptRow({ prompt, documents, onRefresh }) {
     }
   }
 
-  const handleEdit = async ({ name, documents: docs, topics, types, prompt: body }) => {
-    await api.updatePrompt(prompt.filename, { name, documents: docs, topics, types, prompt: body })
+  const handleEdit = async ({ name, documents: docs, visible, body }) => {
+    await api.updatePrompt(prompt.filename, { name, documents: docs, visible, body })
     setShowEdit(false)
     onRefresh()
   }
@@ -128,6 +130,7 @@ function PromptRow({ prompt, documents, onRefresh }) {
         <div style={s.cardHeader}>
           <span style={{ fontSize: '18px' }}>📝</span>
           <span style={s.cardTitle}>{prompt.name}</span>
+          {prompt.visible === false && <span style={s.hiddenBadge}>ツイート作成では非表示</span>}
         </div>
         <div style={s.docList}>
           {prompt.documents.length > 0
@@ -171,8 +174,8 @@ export default function PromptManage() {
 
   useEffect(() => { load() }, [load])
 
-  const handleCreate = async ({ name, documents: docs, topics, types, prompt }) => {
-    await api.createPrompt({ name, documents: docs, topics, types, prompt })
+  const handleCreate = async ({ name, documents: docs, visible, body }) => {
+    await api.createPrompt({ name, documents: docs, visible, body })
     setShowNew(false)
     load()
   }

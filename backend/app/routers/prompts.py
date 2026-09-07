@@ -1,6 +1,5 @@
 import re
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,7 +11,11 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 PROMPTS_DIR = Path("/app/prompts")
 DOCUMENTS_DIR = Path("/app/documents")
 
-_VALID_FILENAME = re.compile(r"^[a-zA-Z0-9_]+\.prompt$")
+_VALID_FILENAME = re.compile(r"^[^\\/\x00-\x1f]+\.prompt$")
+_UNSAFE_FILENAME_CHARS = re.compile(r"[\\/\x00-\x1f]")
+_NAME_LINE = re.compile(r"^name\s*=\s*(.*)$")
+_DOCUMENTS_LINE = re.compile(r"^documents\s*=\s*(.*)$")
+_VISIBLE_LINE = re.compile(r"^visible\s*=\s*(.*)$")
 
 
 def _ensure_dirs():
@@ -20,133 +23,70 @@ def _ensure_dirs():
     DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _parse_multiline_field(lines: list[str]) -> str:
-    """インデントされた続き行を結合して返す（空行・#コメントはスキップ）"""
-    result = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            result.append(stripped)
-    return "\n".join(result)
+def _slugify(name: str) -> str:
+    """プロンプト名からファイル名を作る。日本語などはそのまま残し、
+    パス区切り文字や制御文字だけを置換する"""
+    slug = _UNSAFE_FILENAME_CHARS.sub("_", name.strip())
+    slug = slug.strip(" .")
+    return slug or "prompt"
 
 
 def _parse_prompt_file(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
+    """name / documents / visible だけを抽出し、それ以外（コメント・topics/types/
+    [prompt]・本文）は一切解釈せず生テキスト（body）としてそのまま返す"""
+    lines = path.read_text(encoding="utf-8").splitlines()
     name = path.stem
-    documents = []
-    topics_lines = []
-    types_lines = []
-    body_lines = []
+    documents: list[str] = []
+    visible = True
+    name_idx = None
+    documents_idx = None
+    visible_idx = None
 
-    # パース状態: header / topics / types / prompt
-    state = "header"
-
-    for line in text.splitlines():
-        if state == "prompt":
-            body_lines.append(line)
-            continue
-
+    for i, line in enumerate(lines):
         stripped = line.strip()
+        if name_idx is None and (m := _NAME_LINE.match(stripped)):
+            name = m.group(1).strip()
+            name_idx = i
+        elif documents_idx is None and (m := _DOCUMENTS_LINE.match(stripped)):
+            documents = [d.strip() for d in m.group(1).split(",") if d.strip()]
+            documents_idx = i
+        elif visible_idx is None and (m := _VISIBLE_LINE.match(stripped)):
+            visible = m.group(1).strip().lower() != "false"
+            visible_idx = i
 
-        if stripped.startswith("[prompt]"):
-            state = "prompt"
-            continue
-
-        # 継続行（インデントあり）は現在のマルチライン状態に追加
-        if line.startswith(" ") or line.startswith("\t"):
-            if state == "topics":
-                if stripped and not stripped.startswith("#"):
-                    topics_lines.append(stripped)
-            elif state == "types":
-                if stripped and not stripped.startswith("#"):
-                    types_lines.append(stripped)
-            continue
-
-        # 空行はヘッダー継続行の区切りとして扱うがstateは維持
-        if not stripped:
-            continue
-
-        if stripped.startswith("#"):
-            continue
-
-        if "=" in stripped:
-            key, _, val = stripped.partition("=")
-            key = key.strip()
-            val = val.strip()
-            if key == "name":
-                name = val
-                state = "header"
-            elif key == "documents":
-                documents = [d.strip() for d in val.split(",") if d.strip()]
-                state = "header"
-            elif key == "topics":
-                state = "topics"
-                if val:
-                    topics_lines.append(val)
-            elif key == "types":
-                state = "types"
-                if val:
-                    types_lines.append(val)
+    body_lines = [l for i, l in enumerate(lines) if i not in (name_idx, documents_idx, visible_idx)]
 
     return {
         "filename": path.name,
         "name": name,
         "documents": documents,
-        "topics": "\n".join(topics_lines),
-        "types": "\n".join(types_lines),
-        "prompt": "\n".join(body_lines).strip(),
+        "visible": visible,
+        "body": "\n".join(body_lines).strip("\n"),
     }
 
 
-def _write_prompt_file(
-    path: Path,
-    name: str,
-    documents: list[str],
-    prompt: str,
-    topics: str = "",
-    types: str = "",
-):
+def _write_prompt_file(path: Path, name: str, documents: list[str], visible: bool, body: str):
     docs_str = ", ".join(documents)
-    lines = ["# プロンプト設定ファイル", f"name = {name}", f"documents = {docs_str}"]
-
-    if topics.strip():
-        lines.append("topics =")
-        for line in topics.strip().splitlines():
-            if line.strip():
-                lines.append(f"  {line.strip()}")
-
-    if types.strip():
-        lines.append("types =")
-        for line in types.strip().splitlines():
-            if line.strip():
-                lines.append(f"  {line.strip()}")
-
-    lines.append("")
-    lines.append("[prompt]")
-    lines.append(prompt)
-    lines.append("")
-
-    path.write_text("\n".join(lines), encoding="utf-8")
+    header = f"name = {name}\ndocuments = {docs_str}\nvisible = {'true' if visible else 'false'}\n"
+    path.write_text(header + "\n" + body.strip("\n") + "\n", encoding="utf-8")
 
 
 class PromptCreate(BaseModel):
     name: str
     documents: list[str] = []
-    topics: Optional[str] = ""
-    types: Optional[str] = ""
-    prompt: str
+    visible: bool = True
+    body: str
 
 
 class PromptUpdate(BaseModel):
     name: str
     documents: list[str] = []
-    topics: Optional[str] = ""
-    types: Optional[str] = ""
-    prompt: str
+    visible: bool = True
+    body: str
 
 
 @router.get("/")
-def list_prompts(_=Depends(get_current_user)):
+def list_prompts(visible_only: bool = False, _=Depends(get_current_user)):
     _ensure_dirs()
     result = []
     for p in sorted(PROMPTS_DIR.glob("*.prompt")):
@@ -154,6 +94,8 @@ def list_prompts(_=Depends(get_current_user)):
             result.append(_parse_prompt_file(p))
         except Exception:
             pass
+    if visible_only:
+        result = [p for p in result if p["visible"]]
     return result
 
 
@@ -168,36 +110,36 @@ def get_prompt(filename: str, _=Depends(get_current_user)):
 
 
 @router.post("/", status_code=201)
-def create_prompt(body: PromptCreate, _=Depends(get_current_user)):
+def create_prompt(payload: PromptCreate, _=Depends(get_current_user)):
     _ensure_dirs()
-    if not body.name or len(body.name) > 50:
+    if not payload.name or len(payload.name) > 50:
         raise HTTPException(status_code=400, detail="プロンプト名は1〜50文字で入力してください")
-    if not body.prompt:
+    if not payload.body.strip():
         raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
 
-    filename = re.sub(r"[^a-zA-Z0-9_]", "_", body.name.lower().replace(" ", "_")) + ".prompt"
+    filename = _slugify(payload.name) + ".prompt"
     path = PROMPTS_DIR / filename
     if path.exists():
         raise HTTPException(status_code=409, detail=f"{filename} は既に存在します")
 
-    _write_prompt_file(path, body.name, body.documents, body.prompt, body.topics or "", body.types or "")
+    _write_prompt_file(path, payload.name, payload.documents, payload.visible, payload.body)
     return _parse_prompt_file(path)
 
 
 @router.put("/{filename}")
-def update_prompt(filename: str, body: PromptUpdate, _=Depends(get_current_user)):
+def update_prompt(filename: str, payload: PromptUpdate, _=Depends(get_current_user)):
     if not _VALID_FILENAME.match(filename):
         raise HTTPException(status_code=400, detail="無効なファイル名です")
-    if not body.name or len(body.name) > 50:
+    if not payload.name or len(payload.name) > 50:
         raise HTTPException(status_code=400, detail="プロンプト名は1〜50文字で入力してください")
-    if not body.prompt:
+    if not payload.body.strip():
         raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
 
     path = PROMPTS_DIR / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
 
-    _write_prompt_file(path, body.name, body.documents, body.prompt, body.topics or "", body.types or "")
+    _write_prompt_file(path, payload.name, payload.documents, payload.visible, payload.body)
     return _parse_prompt_file(path)
 
 

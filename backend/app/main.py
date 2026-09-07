@@ -15,6 +15,7 @@ from app.routers import apikeys as apikeys_router
 from app.routers import posting as posting_router
 from app.routers import rate_limit as rate_limit_router
 from app.routers import features as features_router
+from app.routers import tor as tor_router
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
@@ -67,6 +68,102 @@ def _migrate_tweets_table():
             conn.execute(text("ALTER TABLE tweets ALTER COLUMN content TYPE VARCHAR(1024)"))
             conn.commit()
             app_logger.info("tweets.content を VARCHAR(1024) に拡張しました")
+
+
+def _migrate_tor_columns():
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT 1 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid "
+            "WHERE t.typname='tweetstatus' AND e.enumlabel='failed'"
+        ))
+        if not result.fetchone():
+            conn.execute(text("ALTER TYPE tweetstatus ADD VALUE IF NOT EXISTS 'failed'"))
+            conn.commit()
+            app_logger.info("tweetstatus に 'failed' を追加しました")
+
+        for col, definition in [
+            ("error_code", "VARCHAR(50)"),
+            ("error_message", "TEXT"),
+            ("retry_attempt", "INTEGER DEFAULT 0 NOT NULL"),
+            ("failed_at", "TIMESTAMPTZ"),
+            ("posted_via_tor", "BOOLEAN DEFAULT false NOT NULL"),
+        ]:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='tweets' AND column_name=:col"
+            ), {"col": col})
+            if not result.fetchone():
+                conn.execute(text(f"ALTER TABLE tweets ADD COLUMN {col} {definition}"))
+                conn.commit()
+                app_logger.info(f"tweets.{col} を追加しました")
+
+
+def _add_posting_settings_columns() -> bool:
+    """posting_settingsに不足列を追加する。ORM(PostingSettingsモデル)がこの列を
+    参照するため、_seed_posting_settings()より前に必ず実行する必要がある。
+    schedule_hoursを新規に追加した場合はTrueを返す（追加直後のみバックフィルするための判定用）。"""
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='posting_settings' AND column_name='schedule_hours'"
+        ))
+        schedule_hours_added = False
+        if not result.fetchone():
+            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_hours INTEGER DEFAULT 24 NOT NULL"))
+            conn.commit()
+            app_logger.info("posting_settings.schedule_hours を追加しました")
+            schedule_hours_added = True
+
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='posting_settings' AND column_name='allow_over_140'"
+        ))
+        if not result.fetchone():
+            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN allow_over_140 BOOLEAN DEFAULT true NOT NULL"))
+            conn.commit()
+            app_logger.info("posting_settings.allow_over_140 を追加しました")
+
+        return schedule_hours_added
+
+
+_SCHEDULE_MODE_TO_HOURS = {
+    "120min": 24,  # 新しい最小値(24時間)未満だったため繰り上げ
+    "24h_daytime": 24,
+    "72h": 72,
+    "120h": 120,
+}
+
+
+def _backfill_posting_settings_schedule_hours():
+    """旧設定（選択式のschedule_mode）を時間数(schedule_hours)へ移行時に一度だけ引き継ぐ。
+    posting_settings.schedule_mode（無ければ news_settings.schedule_mode）を参照する。
+    posting_settingsに行が存在している状態（_seed_posting_settings()の後）で呼び出すこと。"""
+    with engine.connect() as conn:
+        old_mode = None
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='posting_settings' AND column_name='schedule_mode'"
+        ))
+        if result.fetchone():
+            row = conn.execute(text("SELECT schedule_mode FROM posting_settings LIMIT 1")).fetchone()
+            old_mode = row[0] if row else None
+
+        if old_mode is None:
+            result = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='news_settings' AND column_name='schedule_mode'"
+            ))
+            if result.fetchone():
+                row = conn.execute(text("SELECT schedule_mode FROM news_settings LIMIT 1")).fetchone()
+                old_mode = row[0] if row else None
+
+        if old_mode is None:
+            return
+
+        hours = _SCHEDULE_MODE_TO_HOURS.get(old_mode, 24)
+        conn.execute(text("UPDATE posting_settings SET schedule_hours = :hours"), {"hours": hours})
+        conn.commit()
+        app_logger.info(f"旧schedule_mode={old_mode!r} を schedule_hours={hours} に引き継ぎました")
 
 
 def _migrate_news_settings_table():
@@ -190,12 +287,22 @@ def _cleanup_old_images():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services import posting_mode
+    app_logger.info(
+        f"posting_mode loaded from .env: DEFAULT_POSTING_MODE={posting_mode.get_default_mode()} "
+        f"current_posting_mode={posting_mode.get_mode()}"
+    )
+
     Base.metadata.create_all(bind=engine)
     _migrate_tweets_table()
+    _migrate_tor_columns()
     _migrate_news_settings_table()
     _seed_news_data()
     _migrate_news_sources_v2()
+    posting_settings_col_added = _add_posting_settings_columns()
     _seed_posting_settings()
+    if posting_settings_col_added:
+        _backfill_posting_settings_schedule_hours()
     _recover_scheduled_tweets()
     _cleanup_old_images()
     if settings.legacy_news_feature_enabled:
@@ -233,6 +340,7 @@ app.include_router(apikeys_router.router)
 app.include_router(posting_router.router)
 app.include_router(rate_limit_router.router)
 app.include_router(features_router.router)
+app.include_router(tor_router.router)
 
 
 @app.get("/health")

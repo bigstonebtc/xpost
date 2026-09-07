@@ -10,26 +10,51 @@ const styles = {
   radioDesc: { fontSize: '12px', color: '#888', marginTop: '2px' },
   errMsg: { color: '#dc3545', fontSize: '13px', marginTop: '8px' },
   successMsg: { color: '#198754', fontSize: '13px', marginTop: '8px' },
+  statusRow: { display: 'flex', gap: '8px', fontSize: '14px', marginBottom: '6px' },
+  statusLabel: { color: '#888', minWidth: '110px' },
+  badgeOk: { color: '#198754', fontWeight: 'bold' },
+  badgeErr: { color: '#dc3545', fontWeight: 'bold' },
+  btnRow: { display: 'flex', gap: '8px', marginTop: '14px' },
+  secondaryBtn: { padding: '8px 16px', background: '#fff', color: '#1a1a2e', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
+  note: { fontSize: '12px', color: '#888', marginTop: '10px', lineHeight: '1.6' },
+  warnBadge: { color: '#dd8800', fontWeight: 'bold' },
 }
 
+const SCHEDULE_HOURS_MIN = 24
+const SCHEDULE_HOURS_MAX = 720
+
 export default function PostSettings() {
-  const [scheduleMode, setScheduleMode] = useState('120min')
-  const [savedSettings, setSavedSettings] = useState(null)
+  const [scheduleHours, setScheduleHours] = useState(24)
   const [dailyLimit, setDailyLimit] = useState(10)
+  const [allowOver140, setAllowOver140] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingLimit, setSavingLimit] = useState(false)
+  const [savingCharLimit, setSavingCharLimit] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [limitMsg, setLimitMsg] = useState({ type: '', text: '' })
+  const [charLimitMsg, setCharLimitMsg] = useState({ type: '', text: '' })
+
+  const [torStatus, setTorStatus] = useState(null)
+  const [torChecking, setTorChecking] = useState(false)
+  const [torRestarting, setTorRestarting] = useState(false)
+  const [torMsg, setTorMsg] = useState({ type: '', text: '' })
+
+  const [postingMode, setPostingMode] = useState('tor')
+  const [defaultMode, setDefaultMode] = useState('tor')
+  const [modeNote, setModeNote] = useState('')
+  const [savingMode, setSavingMode] = useState(false)
+  const [modeMsg, setModeMsg] = useState({ type: '', text: '' })
 
   const load = useCallback(async () => {
     try {
-      const [newsData, postingData] = await Promise.all([api.newsSettings(), api.getPostingSettings()])
-      if (newsData.general) {
-        setScheduleMode(newsData.general.schedule_mode || '120min')
-        setSavedSettings(newsData.general)
-      }
+      const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
+      setScheduleHours(postingData.schedule_hours ?? 24)
+      setAllowOver140(postingData.allow_over_140 ?? true)
+      setPostingMode(postingData.posting_mode || 'tor')
+      setDefaultMode(postingData.default_mode || 'tor')
+      setModeNote(postingData.note || '')
     } catch (e) {
       setMsg({ type: 'err', text: e.message })
     } finally {
@@ -38,6 +63,49 @@ export default function PostSettings() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { checkTorStatus() }, [])
+
+  const checkTorStatus = async () => {
+    setTorChecking(true)
+    try {
+      const s = await api.torStatus()
+      setTorStatus(s)
+    } catch (e) {
+      setTorMsg({ type: 'err', text: e.message })
+    } finally {
+      setTorChecking(false)
+    }
+  }
+
+  const restartTor = async () => {
+    if (!confirm('Torコンテナを再起動しますか？（数十秒かかります）')) return
+    setTorRestarting(true)
+    setTorMsg({ type: '', text: '' })
+    try {
+      const s = await api.torRestart()
+      setTorStatus(s)
+      setTorMsg({ type: 'ok', text: '再起動しました ✓' })
+    } catch (e) {
+      setTorMsg({ type: 'err', text: e.message })
+    } finally {
+      setTorRestarting(false)
+    }
+  }
+
+  const saveMode = async () => {
+    setSavingMode(true)
+    setModeMsg({ type: '', text: '' })
+    try {
+      const res = await api.updatePostingMode(postingMode)
+      setDefaultMode(res.default_mode)
+      setModeNote(res.note)
+      setModeMsg({ type: 'ok', text: res.message })
+    } catch (e) {
+      setModeMsg({ type: 'err', text: e.message })
+    } finally {
+      setSavingMode(false)
+    }
+  }
 
   const flash = (type, text) => {
     setMsg({ type, text })
@@ -47,6 +115,25 @@ export default function PostSettings() {
   const flashLimit = (type, text) => {
     setLimitMsg({ type, text })
     setTimeout(() => setLimitMsg({ type: '', text: '' }), 3000)
+  }
+
+  const flashCharLimit = (type, text) => {
+    setCharLimitMsg({ type, text })
+    setTimeout(() => setCharLimitMsg({ type: '', text: '' }), 3000)
+  }
+
+  const saveAllowOver140 = async (checked) => {
+    setAllowOver140(checked)
+    setSavingCharLimit(true)
+    try {
+      await api.updateAllowOver140(checked)
+      flashCharLimit('ok', '保存しました ✓')
+    } catch (e) {
+      setAllowOver140(!checked)
+      flashCharLimit('err', e.message)
+    } finally {
+      setSavingCharLimit(false)
+    }
   }
 
   const saveLimit = async () => {
@@ -67,16 +154,14 @@ export default function PostSettings() {
   }
 
   const save = async () => {
-    if (!savedSettings) return
+    const val = Number(scheduleHours)
+    if (!Number.isInteger(val) || val < SCHEDULE_HOURS_MIN || val > SCHEDULE_HOURS_MAX) {
+      flash('err', `${SCHEDULE_HOURS_MIN}〜${SCHEDULE_HOURS_MAX}の整数で指定してください`)
+      return
+    }
     setSaving(true)
     try {
-      await api.newsUpdateGeneral(
-        savedSettings.fetch_limit_per_run,
-        null,
-        scheduleMode,
-        savedSettings.news_prompt_file,
-      )
-      setSavedSettings(prev => ({ ...prev, schedule_mode: scheduleMode }))
+      await api.updateScheduleHours(val)
       flash('ok', '保存しました')
     } catch (e) {
       flash('err', e.message)
@@ -87,16 +172,74 @@ export default function PostSettings() {
 
   if (loading) return <p style={{ color: '#888', textAlign: 'center', marginTop: '40px' }}>読み込み中...</p>
 
-  const modes = [
-    { value: '120min', label: '120分以内にランダム投稿', desc: 'Scheduleボタンを押してから最大120分以内にランダムなタイミングで投稿' },
-    { value: '24h_daytime', label: '24時間以内・日中（JST 7:00〜20:00）にランダム投稿', desc: '向こう24時間以内の朝7時〜夜8時の範囲でランダムなタイミングで投稿' },
-    { value: '72h', label: '72時間以内にランダム投稿', desc: 'Scheduleボタンを押してから最大72時間以内にランダムなタイミングで投稿' },
-    { value: '120h', label: '120時間以内にランダム投稿', desc: 'Scheduleボタンを押してから最大120時間以内にランダムなタイミングで投稿' },
-  ]
-
   return (
     <div>
       {msg.text && <p style={msg.type === 'ok' ? styles.successMsg : styles.errMsg}>{msg.text}</p>}
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Tor Service</div>
+        <div style={styles.statusRow}>
+          <span style={styles.statusLabel}>Status:</span>
+          {torStatus
+            ? <span style={torStatus.tor_connected ? styles.badgeOk : styles.badgeErr}>
+                {torStatus.tor_connected ? 'Active' : 'Error'}
+              </span>
+            : <span style={{ color: '#888' }}>{torChecking ? '確認中...' : '未確認'}</span>}
+        </div>
+        <div style={styles.statusRow}>
+          <span style={styles.statusLabel}>Exit IP:</span>
+          <span>{torStatus?.exit_ip || '—'}</span>
+        </div>
+        <div style={styles.statusRow}>
+          <span style={styles.statusLabel}>Last Checked:</span>
+          <span>{torStatus?.last_verified_at ? new Date(torStatus.last_verified_at).toLocaleString('ja-JP') : '—'}</span>
+        </div>
+        {torStatus && !torStatus.tor_connected && torStatus.error && (
+          <p style={styles.errMsg}>{torStatus.error}</p>
+        )}
+        {torMsg.text && <p style={torMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{torMsg.text}</p>}
+        <div style={styles.btnRow}>
+          <button style={styles.secondaryBtn} onClick={checkTorStatus} disabled={torChecking || torRestarting}>
+            {torChecking ? '確認中...' : 'Check Status'}
+          </button>
+          <button style={styles.secondaryBtn} onClick={restartTor} disabled={torChecking || torRestarting}>
+            {torRestarting ? '再起動中...' : 'Restart'}
+          </button>
+        </div>
+        <p style={styles.note}>Torが起動していない・出口IPを確認できない場合、投稿は一切実行されません。</p>
+      </div>
+
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>Posting Mode</div>
+        <p style={{ fontSize: '13px', color: '#555', marginBottom: '4px' }}>
+          現在の設定：{postingMode === 'tor' ? 'Tor Mode' : 'Direct Mode'}
+        </p>
+        <div style={styles.radioRow}>
+          <label style={styles.radioLabel}>
+            <input type="radio" name="postingMode" value="tor" checked={postingMode === 'tor'} onChange={() => setPostingMode('tor')} />
+            <div>
+              <div>Tor Mode（推奨）</div>
+              <div style={styles.radioDesc}>Tor ネットワーク経由で投稿します</div>
+            </div>
+          </label>
+          <label style={{ ...styles.radioLabel, opacity: 0.5, cursor: 'not-allowed' }}>
+            <input type="radio" name="postingMode" value="direct" checked={postingMode === 'direct'} disabled />
+            <div>
+              <div>Direct Mode（緊急用） <span style={styles.warnBadge}>⚠️</span></div>
+              <div style={styles.radioDesc}>Tor を経由せず直接投稿します。VPS の IP が X に記録されます。</div>
+            </div>
+          </label>
+        </div>
+        <p style={styles.note}>Direct ModeへのUIからの切り替えは現在無効化されています。</p>
+        {modeMsg.text && <p style={modeMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{modeMsg.text}</p>}
+        <button style={styles.saveBtn} onClick={saveMode} disabled={savingMode}>
+          {savingMode ? '保存中...' : '保存'}
+        </button>
+        <p style={styles.note}>
+          デフォルト：{defaultMode === 'tor' ? 'Tor Mode' : 'Direct Mode'}（.env の POSTING_MODE）<br />
+          {modeNote || 'Docker 再起動でデフォルト値に戻ります'}
+        </p>
+      </div>
 
       <div style={styles.section}>
         <div style={styles.sectionTitle}>キュー設定</div>
@@ -121,26 +264,42 @@ export default function PostSettings() {
             {savingLimit ? '保存中...' : '保存'}
           </button>
         </div>
-        <div style={styles.radioRow}>
-          {modes.map(m => (
-            <label key={m.value} style={styles.radioLabel}>
-              <input
-                type="radio"
-                name="scheduleMode"
-                value={m.value}
-                checked={scheduleMode === m.value}
-                onChange={() => setScheduleMode(m.value)}
-              />
-              <div>
-                <div>{m.label}</div>
-                <div style={styles.radioDesc}>{m.desc}</div>
-              </div>
-            </label>
-          ))}
+        <div style={{ padding: '12px 0' }}>
+          <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: '500' }}>投稿タイミング</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input
+              type="number"
+              min={SCHEDULE_HOURS_MIN}
+              max={SCHEDULE_HOURS_MAX}
+              step="1"
+              value={scheduleHours}
+              onChange={e => setScheduleHours(e.target.value)}
+              style={{ width: '80px', padding: '7px 10px', border: '1px solid #aaa', borderRadius: '4px', fontSize: '14px' }}
+            />
+            <span style={{ fontSize: '13px', color: '#555' }}>時間以内にランダム投稿</span>
+          </div>
+          <p style={styles.note}>
+            指定した時間内で、日中（JST 7:00〜20:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
+          </p>
         </div>
-        <button style={styles.saveBtn} onClick={save} disabled={saving || !savedSettings}>
+        <button style={styles.saveBtn} onClick={save} disabled={saving}>
           {saving ? '保存中...' : '保存'}
         </button>
+        <div style={{ padding: '16px 0 0', borderTop: '1px solid #f0f0f0', marginTop: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={allowOver140}
+              disabled={savingCharLimit}
+              onChange={e => saveAllowOver140(e.target.checked)}
+            />
+            140文字以上の投稿を許可する
+          </label>
+          <p style={styles.note}>
+            オフにすると、140文字を超えるツイートはSchedule・Post nowのどちらもできなくなります。
+          </p>
+          {charLimitMsg.text && <p style={charLimitMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{charLimitMsg.text}</p>}
+        </div>
       </div>
     </div>
   )

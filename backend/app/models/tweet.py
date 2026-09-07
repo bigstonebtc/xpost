@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Enum as SAEnum, ForeignKey, Text, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
 import enum
@@ -9,6 +9,7 @@ class TweetStatus(str, enum.Enum):
     scheduled = "scheduled"
     posted = "posted"
     discarded = "discarded"
+    failed = "failed"
 
 
 class Tweet(Base):
@@ -25,3 +26,9 @@ class Tweet(Base):
     source_type = Column(String(20), default="manual", nullable=True)
     news_item_id = Column(Integer, ForeignKey("news_items.id"), nullable=True)
     image_path = Column(String(500), nullable=True)
+    # --- Tor 経由投稿 ---
+    error_code = Column(String(50), nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_attempt = Column(Integer, default=0, nullable=False)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
+    posted_via_tor = Column(Boolean, default=False, nullable=False)

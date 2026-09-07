@@ -47,6 +47,8 @@ export const api = {
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
+  reschedule: (id) => request('POST', `/queue/${id}/reschedule`),
+  rescheduleAll: () => request('POST', '/queue/reschedule-all'),
   searchNews: (tweetId, search_pattern, exclude_urls) =>
     request('POST', `/tweets/${tweetId}/news/search`, { search_pattern, exclude_urls }),
   attachNews: (tweetId, url) => request('POST', `/tweets/${tweetId}/news/attach`, { url }),
@@ -91,13 +93,20 @@ export const api = {
   // 投稿設定
   getPostingSettings: () => request('GET', '/settings/posting/'),
   updatePostingSettings: (daily_schedule_limit) => request('PUT', '/settings/posting/', { daily_schedule_limit }),
+  getPostingMode: () => request('GET', '/settings/posting/mode'),
+  updatePostingMode: (posting_mode) => request('PUT', '/settings/posting/mode', { posting_mode }),
+  updateScheduleHours: (schedule_hours) => request('PUT', '/settings/posting/schedule-hours', { schedule_hours }),
+  updateAllowOver140: (allow_over_140) => request('PUT', '/settings/posting/allow-over-140', { allow_over_140 }),
+  // Tor
+  torStatus: () => request('GET', '/tor/status'),
+  torRestart: () => request('POST', '/tor/restart'),
   // APIキー設定
   getApiKeys: () => request('GET', '/settings/apikeys'),
   getApiKeysRaw: () => request('GET', '/settings/apikeys/raw'),
   updateApiKeys: (keys) => request('PUT', '/settings/apikeys', keys),
   restartApp: () => request('POST', '/settings/restart'),
   // プロンプト管理
-  listPrompts: () => request('GET', '/prompts/'),
+  listPrompts: (visibleOnly) => request('GET', visibleOnly ? '/prompts/?visible_only=true' : '/prompts/'),
   getPrompt: (filename) => request('GET', `/prompts/${filename}`),
   createPrompt: (body) => request('POST', '/prompts/', body),
   updatePrompt: (filename, body) => request('PUT', `/prompts/${filename}`, body),

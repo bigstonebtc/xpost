@@ -11,12 +11,24 @@ services:
       timeout: 5s
       retries: 5
 
+  tor:
+    build: ./tor
+    restart: always
+    env_file: ./conf/env.conf
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9050"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     restart: always
     env_file: ./conf/env.conf
     depends_on:
       db:
+        condition: service_healthy
+      tor:
         condition: service_healthy
     volumes:
       - ./data:/app/data:ro
@@ -26,6 +38,9 @@ services:
       - ./prompts:/app/prompts
       - ./documents:/app/documents:ro
       - ./logs:/app/logs
+      # Tor Serviceの[Restart]機能（POST /tor/restart）用。
+      # backendにホストのDockerデーモン制御権を与えるため取り扱いに注意。
+      - /var/run/docker.sock:/var/run/docker.sock
 
   frontend:
     build: ./frontend

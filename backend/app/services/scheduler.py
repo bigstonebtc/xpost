@@ -13,7 +13,8 @@ scheduler.start()
 def _execute_post(tweet_id: int):
     from app.database import SessionLocal
     from app.models.tweet import Tweet, TweetStatus
-    from app.services.poster import post_tweet
+    from app.services.poster import post_tweet_with_retry
+    from pathlib import Path
 
     db = SessionLocal()
     try:
@@ -25,14 +26,35 @@ def _execute_post(tweet_id: int):
             posting_logger.warning(f"tweet_id={tweet_id} のステータスが scheduled ではありません: {tweet.status}")
             return
         posting_logger.info(f"schedule executed: tweet_id={tweet_id}")
+        image_path = tweet.image_path
         started_at = time.monotonic()
-        x_id = post_tweet(tweet.content)
+        result = post_tweet_with_retry(tweet.content, image_path, tweet_id=tweet_id)
         elapsed = time.monotonic() - started_at
-        tweet.status = TweetStatus.posted
-        tweet.posted_at = datetime.now(timezone.utc)
-        tweet.x_tweet_id = x_id
-        db.commit()
-        posting_logger.info(f"posted tweet_id={tweet_id} x_id={x_id} in {elapsed:.1f}s")
+
+        if result.ok:
+            tweet.status = TweetStatus.posted
+            tweet.posted_at = datetime.now(timezone.utc)
+            tweet.x_tweet_id = result.x_tweet_id
+            tweet.posted_via_tor = result.posted_via_tor
+            tweet.image_path = None
+            tweet.error_code = None
+            tweet.error_message = None
+            tweet.retry_attempt = result.retry_attempt
+            db.commit()
+            if image_path:
+                Path(image_path).unlink(missing_ok=True)
+            posting_logger.info(
+                f"posted tweet_id={tweet_id} x_id={result.x_tweet_id} posted_via_tor={result.posted_via_tor} "
+                f"in {elapsed:.1f}s"
+            )
+        else:
+            tweet.status = TweetStatus.failed
+            tweet.error_code = result.error_code
+            tweet.error_message = result.error_message
+            tweet.retry_attempt = result.retry_attempt
+            tweet.posted_via_tor = result.posted_via_tor
+            tweet.failed_at = datetime.now(timezone.utc)
+            db.commit()
     except RateLimitExceeded:
         posting_logger.warning(f"posting skipped tweet_id={tweet_id}: x_api rate limit exceeded")
         db.rollback()

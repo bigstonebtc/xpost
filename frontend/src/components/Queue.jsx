@@ -1,24 +1,31 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '../api'
 
 const s = {
   card: { background: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
+  cardFailed: { border: '2px solid #e53e3e' },
+  modeInfo: { fontSize: '13px', color: '#718096', marginBottom: '16px' },
+  failedBadge: { display: 'inline-block', fontSize: '12px', color: '#e53e3e', fontWeight: 'bold', marginBottom: '8px' },
   text: { fontSize: '15px', lineHeight: '1.6', marginBottom: '10px', whiteSpace: 'pre-wrap' },
-  meta: { fontSize: '12px', color: '#999', marginBottom: '8px' },
+  meta: (over) => ({ fontSize: '12px', color: over ? '#e53e3e' : '#999', marginBottom: '8px' }),
   btnRow: { display: 'flex', gap: '8px' },
   btn: (color) => ({ padding: '6px 14px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', background: color, color: '#fff', fontWeight: 'bold' }),
   textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '160px', fontFamily: 'inherit', boxSizing: 'border-box' },
   counter: (over) => ({ fontSize: '12px', textAlign: 'right', marginBottom: '8px', color: over ? '#e53e3e' : '#888' }),
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', marginTop: '20px' },
-  createLink: { padding: '10px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', textDecoration: 'none', display: 'inline-block' },
   clearBtn: { padding: '8px 14px', background: '#fff', color: '#e53e3e', border: '1px solid #e53e3e', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
+  rescheduleAllBtn: { padding: '8px 14px', background: '#38a169', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
   scheduled: { fontSize: '12px', color: '#718096', marginTop: '6px' },
   newsPanel: { marginTop: '10px', padding: '12px', background: '#f9f9fb', border: '1px solid #e0e0e0', borderRadius: '6px' },
   newsTitle: { fontSize: '14px', fontWeight: 'bold', marginBottom: '6px' },
   newsMeta: { fontSize: '13px', color: '#555', marginBottom: '2px' },
   newsSummary: { fontSize: '13px', marginTop: '8px', marginBottom: '8px', lineHeight: '1.5' },
   newsErr: { fontSize: '13px', color: '#e53e3e' },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modal: { background: '#fff', padding: '20px', width: '100%', maxWidth: '420px', borderRadius: '8px' },
+  modalTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '14px' },
+  detailRow: { fontSize: '13px', marginBottom: '8px', lineHeight: '1.6', wordBreak: 'break-word' },
+  detailLabel: { color: '#888', marginRight: '6px' },
 }
 
 const ATTACHED_URL_RE = /(?:^|\n)(https?:\/\/\S+)\s*$/
@@ -42,8 +49,10 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [newsResult, setNewsResult] = useState(null)
   const [newsPattern, setNewsPattern] = useState(0)
   const [newsExcludeUrls, setNewsExcludeUrls] = useState([])
+  const [showDetail, setShowDetail] = useState(false)
 
   const isScheduled = tweet.status === 'scheduled'
+  const isFailed = tweet.status === 'failed'
   const charCount = editText.length
   const over = charCount > 1024
   const hasNewsUrl = hasAttachedNewsUrl(tweet.content)
@@ -70,9 +79,14 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
   const handlePost = async () => {
     setLoading(true)
-    try { await api.post(tweet.id); onRefresh() }
-    catch (e) { alert(e.message) }
-    finally { setLoading(false) }
+    try {
+      await api.post(tweet.id)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      onRefresh()
+      setLoading(false)
+    }
   }
 
   const handleSchedule = async () => {
@@ -92,6 +106,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const handleDiscard = async () => {
     setLoading(true)
     try { await api.discard(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const handleReschedule = async () => {
+    setLoading(true)
+    try { await api.reschedule(tweet.id); onRefresh() }
     catch (e) { alert(e.message) }
     finally { setLoading(false) }
   }
@@ -214,7 +235,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   }
 
   return (
-    <div style={s.card}>
+    <div style={isFailed ? { ...s.card, ...s.cardFailed } : s.card}>
       <input
         type="file"
         accept="image/jpeg,image/png,image/gif,image/webp"
@@ -238,8 +259,9 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
         </>
       ) : (
         <>
+          {isFailed && <div style={s.failedBadge}>⚠ 投稿失敗</div>}
           <div style={s.text}>{tweet.content}</div>
-          <div style={s.meta}>{tweet.content.length}文字</div>
+          <div style={s.meta(tweet.content.length > 140)}>{tweet.content.length}文字</div>
           {imagePreviewUrl && (
             <img
               src={imagePreviewUrl}
@@ -247,12 +269,34 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
               style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '8px' }}
             />
           )}
-          {isScheduled ? (
+          {isFailed ? (
+            <>
+              <div style={s.btnRow}>
+                <button style={s.btn('#718096')} onClick={() => setShowDetail(true)} disabled={loading}>詳細</button>
+                <button style={s.btn('#38a169')} onClick={handleReschedule} disabled={loading}>Reschedule</button>
+                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>削除</button>
+              </div>
+              {showDetail && (
+                <div style={s.overlay} onClick={e => e.target === e.currentTarget && setShowDetail(false)}>
+                  <div style={s.modal}>
+                    <div style={s.modalTitle}>Error Details</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Error Code:</span>{tweet.error_code || '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Message:</span>{tweet.error_message || '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Failed at:</span>{tweet.failed_at ? new Date(tweet.failed_at).toLocaleString('ja-JP') : '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Attempts:</span>{tweet.retry_attempt ?? 0}/3</div>
+                    <div style={s.btnRow}>
+                      <button style={s.btn('#718096')} onClick={() => setShowDetail(false)}>Close</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : isScheduled ? (
             <>
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
               <div style={{ ...s.btnRow, marginTop: '8px' }}>
-                <button style={s.btn('#718096')} onClick={handleUnschedule} disabled={loading}>戻す</button>
-                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>削除</button>
+                <button style={s.btn('#718096')} onClick={handleUnschedule} disabled={loading}>unschedule</button>
+                <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>delete</button>
               </div>
             </>
           ) : (
@@ -320,15 +364,37 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 export default function Queue() {
   const [tweets, setTweets] = useState([])
   const [loading, setLoading] = useState(false)
+  const [scheduleHours, setScheduleHours] = useState(null)
+  const [rescheduling, setRescheduling] = useState(false)
 
   const load = () => api.queue().then(setTweets).catch(e => alert(e.message))
 
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    api.getPostingSettings().then(s => setScheduleHours(s.schedule_hours)).catch(() => {})
+  }, [])
 
   const handleClear = async () => {
-    if (!confirm('キューを全件削除しますか？')) return
+    if (!confirm('未スケジュールのツイートを全件削除しますか？')) return
     try { await api.clearQueue(); await load() }
     catch (e) { alert(e.message) }
+  }
+
+  const scheduledCount = tweets.filter(t => t.status === 'scheduled').length
+  const unscheduledCount = tweets.filter(t => t.status === 'queued').length
+
+  const handleRescheduleAll = async () => {
+    if (!confirm(`スケジュール済みの${scheduledCount}件を一旦戻し、改めてランダムにスケジュールし直しますか？`)) return
+    setRescheduling(true)
+    try {
+      const res = await api.rescheduleAll()
+      await load()
+      alert(`${res.rescheduled}件を再スケジュールしました`)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setRescheduling(false)
+    }
   }
 
   const handleUpdateContent = (id, content) => {
@@ -340,10 +406,17 @@ export default function Queue() {
       <div style={s.topBar}>
         <h2 style={{ fontSize: '18px' }}>キュー（{tweets.length}件）</h2>
         <div style={s.btnRow}>
-          {tweets.length > 0 && <button style={s.clearBtn} onClick={handleClear}>全件削除</button>}
-          <Link to="/create" style={s.createLink}>ツイート作成画面へ →</Link>
+          {scheduledCount > 0 && (
+            <button style={s.rescheduleAllBtn} onClick={handleRescheduleAll} disabled={rescheduling}>
+              {rescheduling ? '再スケジュール中...' : 'Reschedule all'}
+            </button>
+          )}
+          {unscheduledCount > 0 && <button style={s.clearBtn} onClick={handleClear}>Delete unscheduled</button>}
         </div>
       </div>
+      {scheduleHours != null && (
+        <p style={s.modeInfo}>現在の投稿モード：{scheduleHours}時間内にランダムに投稿</p>
+      )}
       {tweets.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>キューが空です</p>}
       {tweets.map(t => <TweetCard key={t.id} tweet={t} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
     </div>
