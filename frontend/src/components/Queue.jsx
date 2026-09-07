@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '../api'
 
 const s = {
@@ -14,8 +13,8 @@ const s = {
   textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '160px', fontFamily: 'inherit', boxSizing: 'border-box' },
   counter: (over) => ({ fontSize: '12px', textAlign: 'right', marginBottom: '8px', color: over ? '#e53e3e' : '#888' }),
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', marginTop: '20px' },
-  createLink: { padding: '10px 20px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', textDecoration: 'none', display: 'inline-block' },
   clearBtn: { padding: '8px 14px', background: '#fff', color: '#e53e3e', border: '1px solid #e53e3e', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' },
+  rescheduleAllBtn: { padding: '8px 14px', background: '#38a169', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' },
   scheduled: { fontSize: '12px', color: '#718096', marginTop: '6px' },
   newsPanel: { marginTop: '10px', padding: '12px', background: '#f9f9fb', border: '1px solid #e0e0e0', borderRadius: '6px' },
   newsTitle: { fontSize: '14px', fontWeight: 'bold', marginBottom: '6px' },
@@ -366,6 +365,7 @@ export default function Queue() {
   const [tweets, setTweets] = useState([])
   const [loading, setLoading] = useState(false)
   const [scheduleHours, setScheduleHours] = useState(null)
+  const [rescheduling, setRescheduling] = useState(false)
 
   const load = () => api.queue().then(setTweets).catch(e => alert(e.message))
 
@@ -380,6 +380,22 @@ export default function Queue() {
     catch (e) { alert(e.message) }
   }
 
+  const scheduledCount = tweets.filter(t => t.status === 'scheduled').length
+
+  const handleRescheduleAll = async () => {
+    if (!confirm(`スケジュール済みの${scheduledCount}件を一旦戻し、改めてランダムにスケジュールし直しますか？`)) return
+    setRescheduling(true)
+    try {
+      const res = await api.rescheduleAll()
+      await load()
+      alert(`${res.rescheduled}件を再スケジュールしました`)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setRescheduling(false)
+    }
+  }
+
   const handleUpdateContent = (id, content) => {
     setTweets(prev => prev.map(t => t.id === id ? { ...t, content } : t))
   }
@@ -389,8 +405,12 @@ export default function Queue() {
       <div style={s.topBar}>
         <h2 style={{ fontSize: '18px' }}>キュー（{tweets.length}件）</h2>
         <div style={s.btnRow}>
+          {scheduledCount > 0 && (
+            <button style={s.rescheduleAllBtn} onClick={handleRescheduleAll} disabled={rescheduling}>
+              {rescheduling ? '再スケジュール中...' : 'Reschedule all'}
+            </button>
+          )}
           {tweets.length > 0 && <button style={s.clearBtn} onClick={handleClear}>全件削除</button>}
-          <Link to="/create" style={s.createLink}>ツイート作成画面へ →</Link>
         </div>
       </div>
       {scheduleHours != null && (

@@ -76,6 +76,38 @@ def _random_daytime_schedule(hours: int = 24) -> datetime:
     return random.choice(slots).astimezone(timezone.utc)
 
 
+@router.post("/reschedule-all")
+def reschedule_all(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """スケジュール済みの全ツイートを一旦解除し、現在の投稿タイミング設定で
+    改めてランダムにスケジュールし直す。"""
+    from app.services.scheduler import unschedule_tweet
+
+    tweets = db.query(Tweet).filter(Tweet.status == TweetStatus.scheduled).order_by(Tweet.id.asc()).all()
+    if not tweets:
+        return {"rescheduled": 0}
+
+    for tweet in tweets:
+        unschedule_tweet(tweet.id)
+        tweet.status = TweetStatus.queued
+        tweet.scheduled_at = None
+    db.commit()
+
+    ps = db.query(PostingSettings).first()
+    schedule_hours = ps.schedule_hours if ps else 24
+    daily_limit = ps.daily_schedule_limit if ps else 10
+
+    for tweet in tweets:
+        base_dt = _random_daytime_schedule(schedule_hours)
+        scheduled_at = _find_available_datetime(base_dt, daily_limit, db)
+        tweet.status = TweetStatus.scheduled
+        tweet.scheduled_at = scheduled_at
+        db.commit()
+        schedule_tweet(tweet.id, scheduled_at)
+
+    posting_logger.info(f"reschedule_all: {len(tweets)}件を再スケジュールしました")
+    return {"rescheduled": len(tweets)}
+
+
 @router.get("/")
 def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
     from sqlalchemy import asc, nulls_last

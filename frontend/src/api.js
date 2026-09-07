@@ -48,6 +48,7 @@ export const api = {
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
   reschedule: (id) => request('POST', `/queue/${id}/reschedule`),
+  rescheduleAll: () => request('POST', '/queue/reschedule-all'),
   searchNews: (tweetId, search_pattern, exclude_urls) =>
     request('POST', `/tweets/${tweetId}/news/search`, { search_pattern, exclude_urls }),
   attachNews: (tweetId, url) => request('POST', `/tweets/${tweetId}/news/attach`, { url }),
