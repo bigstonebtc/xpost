@@ -15,6 +15,7 @@ _VALID_FILENAME = re.compile(r"^[^\\/\x00-\x1f]+\.prompt$")
 _UNSAFE_FILENAME_CHARS = re.compile(r"[\\/\x00-\x1f]")
 _NAME_LINE = re.compile(r"^name\s*=\s*(.*)$")
 _DOCUMENTS_LINE = re.compile(r"^documents\s*=\s*(.*)$")
+_VISIBLE_LINE = re.compile(r"^visible\s*=\s*(.*)$")
 
 
 def _ensure_dirs():
@@ -31,13 +32,15 @@ def _slugify(name: str) -> str:
 
 
 def _parse_prompt_file(path: Path) -> dict:
-    """name / documents だけを抽出し、それ以外（コメント・topics/types/[prompt]・
-    本文）は一切解釈せず生テキスト（body）としてそのまま返す"""
+    """name / documents / visible だけを抽出し、それ以外（コメント・topics/types/
+    [prompt]・本文）は一切解釈せず生テキスト（body）としてそのまま返す"""
     lines = path.read_text(encoding="utf-8").splitlines()
     name = path.stem
     documents: list[str] = []
+    visible = True
     name_idx = None
     documents_idx = None
+    visible_idx = None
 
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -47,37 +50,43 @@ def _parse_prompt_file(path: Path) -> dict:
         elif documents_idx is None and (m := _DOCUMENTS_LINE.match(stripped)):
             documents = [d.strip() for d in m.group(1).split(",") if d.strip()]
             documents_idx = i
+        elif visible_idx is None and (m := _VISIBLE_LINE.match(stripped)):
+            visible = m.group(1).strip().lower() != "false"
+            visible_idx = i
 
-    body_lines = [l for i, l in enumerate(lines) if i not in (name_idx, documents_idx)]
+    body_lines = [l for i, l in enumerate(lines) if i not in (name_idx, documents_idx, visible_idx)]
 
     return {
         "filename": path.name,
         "name": name,
         "documents": documents,
+        "visible": visible,
         "body": "\n".join(body_lines).strip("\n"),
     }
 
 
-def _write_prompt_file(path: Path, name: str, documents: list[str], body: str):
+def _write_prompt_file(path: Path, name: str, documents: list[str], visible: bool, body: str):
     docs_str = ", ".join(documents)
-    header = f"name = {name}\ndocuments = {docs_str}\n"
+    header = f"name = {name}\ndocuments = {docs_str}\nvisible = {'true' if visible else 'false'}\n"
     path.write_text(header + "\n" + body.strip("\n") + "\n", encoding="utf-8")
 
 
 class PromptCreate(BaseModel):
     name: str
     documents: list[str] = []
+    visible: bool = True
     body: str
 
 
 class PromptUpdate(BaseModel):
     name: str
     documents: list[str] = []
+    visible: bool = True
     body: str
 
 
 @router.get("/")
-def list_prompts(_=Depends(get_current_user)):
+def list_prompts(visible_only: bool = False, _=Depends(get_current_user)):
     _ensure_dirs()
     result = []
     for p in sorted(PROMPTS_DIR.glob("*.prompt")):
@@ -85,6 +94,8 @@ def list_prompts(_=Depends(get_current_user)):
             result.append(_parse_prompt_file(p))
         except Exception:
             pass
+    if visible_only:
+        result = [p for p in result if p["visible"]]
     return result
 
 
@@ -111,7 +122,7 @@ def create_prompt(payload: PromptCreate, _=Depends(get_current_user)):
     if path.exists():
         raise HTTPException(status_code=409, detail=f"{filename} は既に存在します")
 
-    _write_prompt_file(path, payload.name, payload.documents, payload.body)
+    _write_prompt_file(path, payload.name, payload.documents, payload.visible, payload.body)
     return _parse_prompt_file(path)
 
 
@@ -128,7 +139,7 @@ def update_prompt(filename: str, payload: PromptUpdate, _=Depends(get_current_us
     if not path.exists():
         raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
 
-    _write_prompt_file(path, payload.name, payload.documents, payload.body)
+    _write_prompt_file(path, payload.name, payload.documents, payload.visible, payload.body)
     return _parse_prompt_file(path)
 
 

@@ -3,6 +3,7 @@
 # topics/typesは使用しない
 name = ニュース記事検索
 documents =
+visible = false
 
 [prompt]
 あなたは @NakamuraMilei （自由主義・相続税廃止・私有財産権・規制緩和を訴えるXアカウント）の運用担当です。

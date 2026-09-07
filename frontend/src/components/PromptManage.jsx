@@ -29,11 +29,14 @@ const s = {
   warnMsg: { color: '#dd8800', fontSize: '13px', marginBottom: '8px' },
   empty: { color: '#999', textAlign: 'center', marginTop: '40px' },
   hint: { color: '#aaa', marginLeft: '6px', fontWeight: 'normal' },
+  checkboxRowPlain: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', marginBottom: '12px' },
+  hiddenBadge: { display: 'inline-block', fontSize: '11px', color: '#888', background: '#f0f0f0', borderRadius: '4px', padding: '2px 6px', marginLeft: '8px' },
 }
 
 function PromptModal({ initial, documents, onSave, onClose }) {
   const [name, setName] = useState(initial?.name || '')
   const [selectedDocs, setSelectedDocs] = useState(initial?.documents || [])
+  const [visible, setVisible] = useState(initial ? initial.visible !== false : true)
   const [body, setBody] = useState(initial?.body || '')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
@@ -54,7 +57,7 @@ function PromptModal({ initial, documents, onSave, onClose }) {
     if (!body.trim()) { setErr('プロンプト本文は必須です'); return }
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), documents: selectedDocs, body })
+      await onSave({ name: name.trim(), documents: selectedDocs, visible, body })
     } catch (e) {
       setErr(e.message)
       setSaving(false)
@@ -83,6 +86,11 @@ function PromptModal({ initial, documents, onSave, onClose }) {
           }
         </div>
 
+        <label style={s.checkboxRowPlain}>
+          <input type="checkbox" checked={visible} onChange={e => setVisible(e.target.checked)} />
+          ツイート作成画面に表示する
+        </label>
+
         <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>入力した内容がそのまま保存されます（#コメント可）。論点リスト・型リストを使う場合は先頭に「topics =」「types =」（1行1項目、インデント）と「[prompt]」を書いてから本文を続けてください</span></label>
         {topicWarning && <p style={s.warnMsg}>⚠ 本文に {'{topic}'} がありますが、論点リストが空です</p>}
         {typeWarning && <p style={s.warnMsg}>⚠ 本文に {'{type}'} がありますが、型リストが空です</p>}
@@ -110,8 +118,8 @@ function PromptRow({ prompt, documents, onRefresh }) {
     }
   }
 
-  const handleEdit = async ({ name, documents: docs, body }) => {
-    await api.updatePrompt(prompt.filename, { name, documents: docs, body })
+  const handleEdit = async ({ name, documents: docs, visible, body }) => {
+    await api.updatePrompt(prompt.filename, { name, documents: docs, visible, body })
     setShowEdit(false)
     onRefresh()
   }
@@ -122,6 +130,7 @@ function PromptRow({ prompt, documents, onRefresh }) {
         <div style={s.cardHeader}>
           <span style={{ fontSize: '18px' }}>📝</span>
           <span style={s.cardTitle}>{prompt.name}</span>
+          {prompt.visible === false && <span style={s.hiddenBadge}>ツイート作成では非表示</span>}
         </div>
         <div style={s.docList}>
           {prompt.documents.length > 0
@@ -165,8 +174,8 @@ export default function PromptManage() {
 
   useEffect(() => { load() }, [load])
 
-  const handleCreate = async ({ name, documents: docs, body }) => {
-    await api.createPrompt({ name, documents: docs, body })
+  const handleCreate = async ({ name, documents: docs, visible, body }) => {
+    await api.createPrompt({ name, documents: docs, visible, body })
     setShowNew(false)
     load()
   }

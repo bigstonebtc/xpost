@@ -104,7 +104,7 @@ export const api = {
   updateApiKeys: (keys) => request('PUT', '/settings/apikeys', keys),
   restartApp: () => request('POST', '/settings/restart'),
   // プロンプト管理
-  listPrompts: () => request('GET', '/prompts/'),
+  listPrompts: (visibleOnly) => request('GET', visibleOnly ? '/prompts/?visible_only=true' : '/prompts/'),
   getPrompt: (filename) => request('GET', `/prompts/${filename}`),
   createPrompt: (body) => request('POST', '/prompts/', body),
   updatePrompt: (filename, body) => request('PUT', `/prompts/${filename}`, body),
