@@ -375,12 +375,13 @@ export default function Queue() {
   }, [])
 
   const handleClear = async () => {
-    if (!confirm('キューを全件削除しますか？')) return
+    if (!confirm('未スケジュールのツイートを全件削除しますか？')) return
     try { await api.clearQueue(); await load() }
     catch (e) { alert(e.message) }
   }
 
   const scheduledCount = tweets.filter(t => t.status === 'scheduled').length
+  const unscheduledCount = tweets.filter(t => t.status === 'queued').length
 
   const handleRescheduleAll = async () => {
     if (!confirm(`スケジュール済みの${scheduledCount}件を一旦戻し、改めてランダムにスケジュールし直しますか？`)) return
@@ -410,7 +411,7 @@ export default function Queue() {
               {rescheduling ? '再スケジュール中...' : 'Reschedule all'}
             </button>
           )}
-          {tweets.length > 0 && <button style={s.clearBtn} onClick={handleClear}>全件削除</button>}
+          {unscheduledCount > 0 && <button style={s.clearBtn} onClick={handleClear}>Delete unscheduled</button>}
         </div>
       </div>
       {scheduleHours != null && (
