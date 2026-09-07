@@ -27,6 +27,13 @@ class TweetUpdate(BaseModel):
     content: str
 
 
+def _check_char_limit(tweet: Tweet, db: Session) -> None:
+    ps = db.query(PostingSettings).first()
+    allow_over_140 = ps.allow_over_140 if ps else True
+    if not allow_over_140 and len(tweet.content) > 140:
+        raise HTTPException(status_code=400, detail="140文字を超えています")
+
+
 def _find_available_datetime(base_dt: datetime, daily_limit: int, db: Session) -> datetime:
     """daily_limit 未満のスケジュール件数になる日を探して base_dt の時刻で返す"""
     candidate = base_dt
@@ -97,6 +104,7 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), _=Depends(get_c
     ).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+    _check_char_limit(tweet, db)
 
     image_path = tweet.image_path
     try:
@@ -166,11 +174,9 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
 
-    ps = db.query(PostingSettings).first()
-    allow_over_140 = ps.allow_over_140 if ps else True
-    if not allow_over_140 and len(tweet.content) > 140:
-        raise HTTPException(status_code=400, detail="140文字を超えています")
+    _check_char_limit(tweet, db)
 
+    ps = db.query(PostingSettings).first()
     schedule_hours = ps.schedule_hours if ps else 24
     base_dt = _random_daytime_schedule(schedule_hours)
 

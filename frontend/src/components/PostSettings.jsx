@@ -295,7 +295,7 @@ export default function PostSettings() {
             140文字以上の投稿を許可する
           </label>
           <p style={styles.note}>
-            オフにすると、140文字を超えるツイートはScheduleできなくなります（Post nowには影響しません）。
+            オフにすると、140文字を超えるツイートはSchedule・Post nowのどちらもできなくなります。
           </p>
           {charLimitMsg.text && <p style={charLimitMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{charLimitMsg.text}</p>}
         </div>
