@@ -6,7 +6,9 @@
 本スクリプトはPostgreSQL側を読み取るのみで変更しない（非破壊）。
 
 使い方:
-  pip install psycopg2-binary   # このスクリプト専用。アプリ本体の依存には含めない
+  # app.database 経由でモデル定義（app.models）を読み込むため、SQLAlchemyだけでなく
+  # backend/requirements.txt 一式（FastAPI等）が必要。psycopg2-binaryのみは追加。
+  pip install -r ../backend/requirements.txt psycopg2-binary
   python3 migrate_pg_to_sqlite.py \\
       --pg-url postgresql://xpost:changeme@localhost:5432/xpost \\
       --sqlite-path /home/claude/xpost/db/queue.sqlite
