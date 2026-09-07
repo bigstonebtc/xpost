@@ -101,18 +101,29 @@ def _migrate_tor_columns():
 def _add_posting_settings_columns() -> bool:
     """posting_settingsに不足列を追加する。ORM(PostingSettingsモデル)がこの列を
     参照するため、_seed_posting_settings()より前に必ず実行する必要がある。
-    新規に列を追加した場合はTrueを返す（追加直後のみバックフィルするための判定用）。"""
+    schedule_hoursを新規に追加した場合はTrueを返す（追加直後のみバックフィルするための判定用）。"""
     with engine.connect() as conn:
         result = conn.execute(text(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name='posting_settings' AND column_name='schedule_hours'"
         ))
-        if result.fetchone():
-            return False
-        conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_hours INTEGER DEFAULT 24 NOT NULL"))
-        conn.commit()
-        app_logger.info("posting_settings.schedule_hours を追加しました")
-        return True
+        schedule_hours_added = False
+        if not result.fetchone():
+            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN schedule_hours INTEGER DEFAULT 24 NOT NULL"))
+            conn.commit()
+            app_logger.info("posting_settings.schedule_hours を追加しました")
+            schedule_hours_added = True
+
+        result = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='posting_settings' AND column_name='allow_over_140'"
+        ))
+        if not result.fetchone():
+            conn.execute(text("ALTER TABLE posting_settings ADD COLUMN allow_over_140 BOOLEAN DEFAULT true NOT NULL"))
+            conn.commit()
+            app_logger.info("posting_settings.allow_over_140 を追加しました")
+
+        return schedule_hours_added
 
 
 _SCHEDULE_MODE_TO_HOURS = {

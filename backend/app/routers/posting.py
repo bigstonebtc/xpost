@@ -22,6 +22,10 @@ class ScheduleHoursUpdate(BaseModel):
     schedule_hours: int
 
 
+class AllowOver140Update(BaseModel):
+    allow_over_140: bool
+
+
 def _mode_note() -> str:
     return f"Docker再起動で {posting_mode.get_default_mode()} に戻ります"
 
@@ -32,6 +36,7 @@ def get_posting_settings(db: Session = Depends(get_db), _=Depends(get_current_us
     return {
         "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
         "schedule_hours": ps.schedule_hours if ps else 24,
+        "allow_over_140": ps.allow_over_140 if ps else True,
         "posting_mode": posting_mode.get_mode(),
         "default_mode": posting_mode.get_default_mode(),
         "note": _mode_note(),
@@ -58,6 +63,16 @@ def update_schedule_hours(body: ScheduleHoursUpdate, db: Session = Depends(get_d
     if not ps:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
     ps.schedule_hours = body.schedule_hours
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/allow-over-140")
+def update_allow_over_140(body: AllowOver140Update, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    ps = db.query(PostingSettings).first()
+    if not ps:
+        raise HTTPException(status_code=404, detail="設定が見つかりません")
+    ps.allow_over_140 = body.allow_over_140
     db.commit()
     return {"ok": True}
 

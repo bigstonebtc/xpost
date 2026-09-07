@@ -26,11 +26,14 @@ const SCHEDULE_HOURS_MAX = 720
 export default function PostSettings() {
   const [scheduleHours, setScheduleHours] = useState(24)
   const [dailyLimit, setDailyLimit] = useState(10)
+  const [allowOver140, setAllowOver140] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingLimit, setSavingLimit] = useState(false)
+  const [savingCharLimit, setSavingCharLimit] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [limitMsg, setLimitMsg] = useState({ type: '', text: '' })
+  const [charLimitMsg, setCharLimitMsg] = useState({ type: '', text: '' })
 
   const [torStatus, setTorStatus] = useState(null)
   const [torChecking, setTorChecking] = useState(false)
@@ -48,6 +51,7 @@ export default function PostSettings() {
       const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
       setScheduleHours(postingData.schedule_hours ?? 24)
+      setAllowOver140(postingData.allow_over_140 ?? true)
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')
       setModeNote(postingData.note || '')
@@ -111,6 +115,25 @@ export default function PostSettings() {
   const flashLimit = (type, text) => {
     setLimitMsg({ type, text })
     setTimeout(() => setLimitMsg({ type: '', text: '' }), 3000)
+  }
+
+  const flashCharLimit = (type, text) => {
+    setCharLimitMsg({ type, text })
+    setTimeout(() => setCharLimitMsg({ type: '', text: '' }), 3000)
+  }
+
+  const saveAllowOver140 = async (checked) => {
+    setAllowOver140(checked)
+    setSavingCharLimit(true)
+    try {
+      await api.updateAllowOver140(checked)
+      flashCharLimit('ok', '保存しました ✓')
+    } catch (e) {
+      setAllowOver140(!checked)
+      flashCharLimit('err', e.message)
+    } finally {
+      setSavingCharLimit(false)
+    }
   }
 
   const saveLimit = async () => {
@@ -261,6 +284,21 @@ export default function PostSettings() {
         <button style={styles.saveBtn} onClick={save} disabled={saving}>
           {saving ? '保存中...' : '保存'}
         </button>
+        <div style={{ padding: '16px 0 0', borderTop: '1px solid #f0f0f0', marginTop: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={allowOver140}
+              disabled={savingCharLimit}
+              onChange={e => saveAllowOver140(e.target.checked)}
+            />
+            140文字以上の投稿を許可する
+          </label>
+          <p style={styles.note}>
+            オフにすると、140文字を超えるツイートはScheduleできなくなります（Post nowには影響しません）。
+          </p>
+          {charLimitMsg.text && <p style={charLimitMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{charLimitMsg.text}</p>}
+        </div>
       </div>
     </div>
   )

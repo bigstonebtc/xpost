@@ -95,6 +95,7 @@ export const api = {
   getPostingMode: () => request('GET', '/settings/posting/mode'),
   updatePostingMode: (posting_mode) => request('PUT', '/settings/posting/mode', { posting_mode }),
   updateScheduleHours: (schedule_hours) => request('PUT', '/settings/posting/schedule-hours', { schedule_hours }),
+  updateAllowOver140: (allow_over_140) => request('PUT', '/settings/posting/allow-over-140', { allow_over_140 }),
   // Tor
   torStatus: () => request('GET', '/tor/status'),
   torRestart: () => request('POST', '/tor/restart'),

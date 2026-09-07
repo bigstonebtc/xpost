@@ -167,6 +167,10 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), _=Depends(
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
 
     ps = db.query(PostingSettings).first()
+    allow_over_140 = ps.allow_over_140 if ps else True
+    if not allow_over_140 and len(tweet.content) > 140:
+        raise HTTPException(status_code=400, detail="140文字を超えています")
+
     schedule_hours = ps.schedule_hours if ps else 24
     base_dt = _random_daytime_schedule(schedule_hours)
 
