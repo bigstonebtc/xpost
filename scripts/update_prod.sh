@@ -16,6 +16,12 @@
 
 set -uo pipefail
 
+# 本番が追従する開発ブランチ（決め打ち）。
+# 誤って別ブランチをpullしないよう、意図的にハードコードしている。
+# 開発ブランチが変わったら（例: main にマージして本番をmain追従に切り替える等）
+# ここを書き換えること。
+BRANCH="claude/multi-user"
+
 APP_ROOT="${XPOST_APP_ROOT:-/app/xpost}"
 PROJECT_NAME="${XPOST_COMPOSE_PROJECT:-xpost_prod}"
 HEALTH_URL="${XPOST_HEALTH_URL:-https://localhost/xpost/api/health}"
@@ -38,7 +44,15 @@ fi
 
 cd "$APP_ROOT" || { echo "APP_ROOTが見つかりません: $APP_ROOT" >&2; exit 1; }
 
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
+  echo "現在チェックアウトされているブランチ ($CURRENT_BRANCH) が" >&2
+  echo "スクリプトの想定ブランチ ($BRANCH) と一致しません。誤ったブランチを" >&2
+  echo "pullしないよう処理を中断します。意図した変更であれば、このスクリプト" >&2
+  echo "冒頭のBRANCH変数を更新してください。" >&2
+  exit 1
+fi
+
 PREV_COMMIT="$(git rev-parse HEAD)"
 echo "現在のコミット（ロールバック用に記録）: $PREV_COMMIT ($BRANCH)"
 
