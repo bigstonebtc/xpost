@@ -18,6 +18,9 @@ _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文�
 _FALLBACK_NEWS_PROMPT = "あなたはXアカウントの運用担当です。提供されたニュース記事をもとに140文字以内のツイートを1件生成してください。URLは別途付与するため本文に含めないこと。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
 
 
+_HEADER_KEYS = {"name", "documents", "topics", "types"}
+
+
 def _parse_prompt_file(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     name = path.stem
@@ -38,19 +41,12 @@ def _parse_prompt_file(path: Path) -> dict:
             state = "prompt"
             continue
 
-        if line.startswith(" ") or line.startswith("\t"):
-            if state == "topics" and stripped and not stripped.startswith("#"):
-                topics_lines.append(stripped)
-            elif state == "types" and stripped and not stripped.startswith("#"):
-                types_lines.append(stripped)
-            continue
-
         if not stripped or stripped.startswith("#"):
             continue
 
-        if "=" in stripped:
-            key, _, val = stripped.partition("=")
-            key = key.strip()
+        key, sep, val = stripped.partition("=")
+        key = key.strip()
+        if sep and key in _HEADER_KEYS:
             val = val.strip()
             if key == "name":
                 name = val
@@ -66,6 +62,14 @@ def _parse_prompt_file(path: Path) -> dict:
                 state = "types"
                 if val:
                     types_lines.append(val)
+            continue
+
+        # topics=/types= の直後、次のキーか[prompt]が現れるまでの行は項目として扱う。
+        # インデントの有無は問わない（付け忘れで項目が消えるのを防ぐため）。
+        if state == "topics":
+            topics_lines.append(stripped)
+        elif state == "types":
+            types_lines.append(stripped)
 
     return {
         "name": name,
