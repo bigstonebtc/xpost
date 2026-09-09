@@ -12,7 +12,6 @@ const s = {
   textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '340px', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '12px' },
   select: { width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', marginBottom: '12px', boxSizing: 'border-box' },
   btn: (color) => ({ padding: '8px 18px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', background: color, color: '#fff' }),
-  btnRow: { display: 'flex', gap: '8px' },
   btnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
   resultTitle: { fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' },
   error: { fontSize: '14px', color: '#e53e3e', marginBottom: '16px' },
@@ -132,22 +131,13 @@ export default function Revision() {
             value={result}
             onChange={e => setResult(e.target.value)}
           />
-          <div style={s.btnRow}>
-            <button
-              style={{ ...s.btn('#2b6cb0'), ...(adding ? s.btnDisabled : {}) }}
-              onClick={handleAddToQueue}
-              disabled={adding}
-            >
-              {adding ? '追加中...' : 'キューに追加'}
-            </button>
-            <button
-              style={{ ...s.btn('#718096'), ...(rewriting ? s.btnDisabled : {}) }}
-              onClick={handleRewrite}
-              disabled={rewriting}
-            >
-              {rewriting ? 'リライト中...' : '再度リライト'}
-            </button>
-          </div>
+          <button
+            style={{ ...s.btn('#2b6cb0'), ...(adding ? s.btnDisabled : {}) }}
+            onClick={handleAddToQueue}
+            disabled={adding}
+          >
+            {adding ? '追加中...' : 'キューに追加'}
+          </button>
         </div>
       )}
     </div>
