@@ -52,7 +52,7 @@ def _find_available_datetime(base_dt: datetime, daily_limit: int, db: Session) -
 
 
 def _random_daytime_schedule(hours: int = 24) -> datetime:
-    """指定時間内でJST日中（7:00〜20:00）のランダムな時刻を返す。
+    """指定時間内でJST日中（7:00〜21:00）のランダムな時刻を返す。
     指定時間が短く窓内に日中枠が無い場合（例: 夜間に1時間指定）は、
     日中制約を優先し、直近の日中枠（翌日以降）まで探す。"""
     now_jst = datetime.now(JST)
@@ -60,16 +60,16 @@ def _random_daytime_schedule(hours: int = 24) -> datetime:
     slots = []
     t = now_jst.replace(second=0, microsecond=0) + timedelta(minutes=1)
     while t <= end_window:
-        if 7 <= t.hour < 20:
+        if 7 <= t.hour < 21:
             slots.append(t)
         t += timedelta(minutes=1)
 
     if not slots:
-        while not (7 <= t.hour < 20):
+        while not (7 <= t.hour < 21):
             t += timedelta(minutes=1)
-        end_of_day = t.replace(hour=20, minute=0, second=0, microsecond=0)
+        end_of_day = t.replace(hour=21, minute=0, second=0, microsecond=0)
         while t <= end_of_day:
-            if 7 <= t.hour < 20:
+            if 7 <= t.hour < 21:
                 slots.append(t)
             t += timedelta(minutes=1)
 

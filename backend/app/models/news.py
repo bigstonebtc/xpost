@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, Boolean, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Text, ForeignKey
 from sqlalchemy.sql import func
 from app.database import Base
+from app.db_types import TZDateTime
 
 
 class NewsSource(Base):
@@ -12,7 +13,7 @@ class NewsSource(Base):
     category = Column(String(50))
     is_enabled = Column(Boolean, default=True)
     is_preset = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(TZDateTime(), server_default=func.now())
 
 
 class FetchSchedule(Base):
@@ -31,7 +32,7 @@ class NewsSettings(Base):
     fetch_limit_per_run = Column(Integer, default=20)
     schedule_mode = Column(String(20), default="120min")
     news_prompt_file = Column(String(255), default="news_comment.prompt")
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(TZDateTime(), server_default=func.now(), onupdate=func.now())
 
 
 class NewsItem(Base):
@@ -42,8 +43,8 @@ class NewsItem(Base):
     url = Column(String(1000), nullable=False, unique=True)
     summary = Column(Text)
     source_id = Column(Integer, ForeignKey("news_sources.id"))
-    published_at = Column(DateTime(timezone=True))
+    published_at = Column(TZDateTime())
     ai_relevant = Column(Boolean)
     tweet_text = Column(Text)
     status = Column(String(20), default="pending")  # pending / queued / skipped
-    fetched_at = Column(DateTime(timezone=True), server_default=func.now())
+    fetched_at = Column(TZDateTime(), server_default=func.now())

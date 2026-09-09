@@ -279,7 +279,7 @@ export default function PostSettings() {
             <span style={{ fontSize: '13px', color: '#555' }}>時間以内にランダム投稿</span>
           </div>
           <p style={styles.note}>
-            指定した時間内で、日中（JST 7:00〜20:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
+            指定した時間内で、日中（JST 7:00〜21:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
           </p>
         </div>
         <button style={styles.saveBtn} onClick={save} disabled={saving}>
