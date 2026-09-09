@@ -116,6 +116,6 @@ export const api = {
   deletePrompt: (filename) => request('DELETE', `/prompts/${filename}`),
   listDocuments: () => request('GET', '/prompts/documents/list'),
   generateWithPrompt: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
-  // 推敲
+  // リライト
   rewrite: (text, prompt_id) => request('POST', '/revision/rewrite', { text, prompt_id }),
 }

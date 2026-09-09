@@ -115,7 +115,7 @@ export default function App() {
         <NavLink to="/dashboard" style={navLinkStyle}>ダッシュボード</NavLink>
         <NavLink to="/queue" style={navLinkStyle}>キュー</NavLink>
         <NavLink to="/create" style={navLinkStyle}>ツイート作成</NavLink>
-        <NavLink to="/revision" style={navLinkStyle}>推敲</NavLink>
+        <NavLink to="/revision" style={navLinkStyle}>リライト</NavLink>
         <NavLink to="/prompts" style={navLinkStyle}>プロンプト管理</NavLink>
         {legacyNewsEnabled && <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>}
         <NavLink to="/history" style={navLinkStyle}>履歴</NavLink>

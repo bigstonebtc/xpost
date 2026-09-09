@@ -9,7 +9,7 @@ const s = {
   title: { fontSize: '18px', fontWeight: 'bold' },
   card: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '16px' },
   label: { fontSize: '13px', color: '#888', marginBottom: '6px' },
-  textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '140px', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '12px' },
+  textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '340px', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: '12px' },
   select: { width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', marginBottom: '12px', boxSizing: 'border-box' },
   btn: (color) => ({ padding: '8px 18px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', background: color, color: '#fff' }),
   btnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
@@ -30,7 +30,7 @@ export default function Revision() {
 
   const load = useCallback(async () => {
     try {
-      const ps = await api.listPrompts(true)
+      const ps = await api.listPrompts()
       setPrompts(ps)
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved && ps.some(p => p.filename === saved)) {
@@ -89,17 +89,17 @@ export default function Revision() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <h2 style={s.title}>推敲</h2>
+        <h2 style={s.title}>リライト</h2>
       </div>
 
       {prompts.length === 0 ? (
         <p style={s.empty}>プロンプトがありません。「プロンプト管理」から作成してください。</p>
       ) : (
         <div style={s.card}>
-          <div style={s.label}>推敲したいツイート</div>
+          <div style={s.label}>元ツイート</div>
           <textarea
             style={s.textarea}
-            placeholder="推敲したいツイートを入力..."
+            placeholder="リライトしたいツイートを入力..."
             value={text}
             onChange={e => setText(e.target.value)}
           />
@@ -125,7 +125,7 @@ export default function Revision() {
 
       {result != null && (
         <div style={s.card}>
-          <div style={s.resultTitle}>リライト結果（編集可能）</div>
+          <div style={s.resultTitle}>リライト後ツイート（編集可能）</div>
           <textarea
             style={s.textarea}
             value={result}
