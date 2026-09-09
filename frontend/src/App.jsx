@@ -4,6 +4,7 @@ import { getToken, setToken, api } from './api'
 import Dashboard from './components/Dashboard'
 import Queue from './components/Queue'
 import TweetCreate from './components/TweetCreate'
+import Revision from './components/Revision'
 import PromptManage from './components/PromptManage'
 import History from './components/History'
 import News from './components/News'
@@ -114,6 +115,7 @@ export default function App() {
         <NavLink to="/dashboard" style={navLinkStyle}>ダッシュボード</NavLink>
         <NavLink to="/queue" style={navLinkStyle}>キュー</NavLink>
         <NavLink to="/create" style={navLinkStyle}>ツイート作成</NavLink>
+        <NavLink to="/revision" style={navLinkStyle}>推敲</NavLink>
         <NavLink to="/prompts" style={navLinkStyle}>プロンプト管理</NavLink>
         {legacyNewsEnabled && <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>}
         <NavLink to="/history" style={navLinkStyle}>履歴</NavLink>
@@ -124,6 +126,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/queue" element={<Queue />} />
           <Route path="/create" element={<TweetCreate />} />
+          <Route path="/revision" element={<Revision />} />
           <Route path="/prompts" element={<PromptManage />} />
           {legacyNewsEnabled && <Route path="/news" element={<News />} />}
           <Route path="/news-settings" element={<Navigate to="/settings" />} />

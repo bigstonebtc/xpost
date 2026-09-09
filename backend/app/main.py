@@ -16,6 +16,7 @@ from app.routers import posting as posting_router
 from app.routers import rate_limit as rate_limit_router
 from app.routers import features as features_router
 from app.routers import tor as tor_router
+from app.routers import revision as revision_router
 from app.user_registry import load_all_users, users_config
 
 # モデルを全てインポートしてcreate_allに認識させる
@@ -190,6 +191,7 @@ app.include_router(posting_router.router)
 app.include_router(rate_limit_router.router)
 app.include_router(features_router.router)
 app.include_router(tor_router.router)
+app.include_router(revision_router.router)
 
 
 @app.get("/health")

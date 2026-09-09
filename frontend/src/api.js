@@ -45,6 +45,7 @@ export const api = {
   features: () => request('GET', '/features/'),
   queue: () => request('GET', '/queue/'),
   generate: () => request('POST', '/tweets/generate'),
+  addToQueue: (content) => request('POST', '/queue/add', { content }),
   post: (id) => request('POST', `/queue/${id}/post`),
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
@@ -115,4 +116,6 @@ export const api = {
   deletePrompt: (filename) => request('DELETE', `/prompts/${filename}`),
   listDocuments: () => request('GET', '/prompts/documents/list'),
   generateWithPrompt: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
+  // 推敲
+  rewrite: (text, prompt_id) => request('POST', '/revision/rewrite', { text, prompt_id }),
 }

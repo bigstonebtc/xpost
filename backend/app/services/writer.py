@@ -14,6 +14,7 @@ from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文字以内のツイートを1件生成してください。JSON配列で返答。例: [\"ツイート本文\"]"
 _FALLBACK_NEWS_PROMPT = "あなたはXアカウントの運用担当です。提供されたニュース記事をもとに140文字以内のツイートを1件生成してください。URLは別途付与するため本文に含めないこと。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
+_FALLBACK_REVISION_PROMPT = "あなたはXアカウントの運用担当です。与えられたツイート文章を、文体や論調を保ったまま推敲・リライトしてください。"
 
 
 _HEADER_KEYS = {"name", "documents", "topics", "types"}
@@ -256,3 +257,31 @@ def generate_tweet_from_news(
     except Exception:
         tweet = text
     return tweet[:max_chars]
+
+
+def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> str:
+    cfg = get_user_config(user_id)
+    api_key = cfg.anthropic_api_key if cfg else ""
+
+    prompt_cfg = _resolve_prompt(user_id, prompt_file)
+    system_prompt = prompt_cfg["prompt"] or _FALLBACK_REVISION_PROMPT
+    source = _load_documents(user_id, prompt_cfg["documents"])
+
+    user_content = []
+    if source:
+        user_content.append({
+            "type": "text",
+            "text": "【参考資料】\n" + source,
+            "cache_control": {"type": "ephemeral"},
+        })
+    user_content.append({
+        "type": "text",
+        "text": (
+            "以下のツイート文章を、上記の方針・論調に沿って推敲・リライトしてください。\n"
+            "1024文字以内厳守。JSON配列で1件のみ返答。\n\n"
+            "【元のツイート】\n" + text + "\n\n"
+            '例: ["リライト後のツイート本文"]'
+        ),
+    })
+
+    return _call_claude_once(user_id, api_key, system_prompt, user_content)
