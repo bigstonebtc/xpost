@@ -20,7 +20,7 @@ set -uo pipefail
 # 誤って別ブランチをpullしないよう、意図的にハードコードしている。
 # 開発ブランチが変わったら（例: main にマージして本番をmain追従に切り替える等）
 # ここを書き換えること。
-BRANCH="claude/multi-user"
+BRANCH="main"
 
 APP_ROOT="${XPOST_APP_ROOT:-/app/xpost}"
 PROJECT_NAME="${XPOST_COMPOSE_PROJECT:-xpost_prod}"
