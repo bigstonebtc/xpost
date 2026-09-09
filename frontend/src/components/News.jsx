@@ -28,7 +28,7 @@ const TWEET_LIMIT = 140
 
 function timeAgo(isoStr) {
   if (!isoStr) return ''
-  const diff = Date.now() - new Date(isoStr + 'Z').getTime()
+  const diff = Date.now() - new Date(isoStr).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 60) return `${mins}分前`
   const hrs = Math.floor(mins / 60)

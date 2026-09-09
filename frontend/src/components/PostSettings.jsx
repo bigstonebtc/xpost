@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api'
+import { formatJst } from '../utils/jst'
 
 const styles = {
   section: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '20px', marginBottom: '20px' },
@@ -192,7 +193,7 @@ export default function PostSettings() {
         </div>
         <div style={styles.statusRow}>
           <span style={styles.statusLabel}>Last Checked:</span>
-          <span>{torStatus?.last_verified_at ? new Date(torStatus.last_verified_at).toLocaleString('ja-JP') : '—'}</span>
+          <span>{torStatus?.last_verified_at ? formatJst(torStatus.last_verified_at, { withSeconds: true }) : '—'}</span>
         </div>
         {torStatus && !torStatus.tor_connected && torStatus.error && (
           <p style={styles.errMsg}>{torStatus.error}</p>
