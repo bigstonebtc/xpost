@@ -159,8 +159,6 @@ async def lifespan(app: FastAPI):
             system_logger.error(f"user={user_id} の初期化に失敗しました（このユーザーは利用不可）: {e}")
 
     cleanup_orphaned_images()
-    from app.services.scheduler import setup_image_cleanup_job
-    setup_image_cleanup_job()
     yield
 
 

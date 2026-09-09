@@ -3,7 +3,7 @@
 通常のライフサイクル（投稿成功・破棄・差し替え・明示削除）では画像は
 その場で即座に削除されるため、本来ここで拾うものはほぼ無いはずだが、
 何らかの理由（処理中のクラッシュ等）で削除が漏れた孤児ファイルの
-掃除用に、backend起動時と毎日1回、保険として実行する。
+掃除用に、backend起動時に保険として実行する。
 """
 from app.database import session_for
 from app.logger import system_logger
