@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api'
 
 const s = {
@@ -40,6 +40,7 @@ function PromptModal({ initial, documents, onSave, onClose }) {
   const [body, setBody] = useState(initial?.body || '')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  const mouseDownOnOverlay = useRef(false)
 
   const toggleDoc = (doc) => {
     setSelectedDocs(prev =>
@@ -65,7 +66,14 @@ function PromptModal({ initial, documents, onSave, onClose }) {
   }
 
   return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div
+      style={s.overlay}
+      onMouseDown={e => { mouseDownOnOverlay.current = e.target === e.currentTarget }}
+      onClick={e => {
+        if (mouseDownOnOverlay.current && e.target === e.currentTarget) onClose()
+        mouseDownOnOverlay.current = false
+      }}
+    >
       <div style={s.modal}>
         <div style={s.modalTitle}>{initial ? 'プロンプトを編集' : '新規プロンプト作成'}</div>
         {err && <p style={s.errMsg}>{err}</p>}
