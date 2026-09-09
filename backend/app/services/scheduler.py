@@ -137,3 +137,26 @@ def reload_news_fetch_jobs(user_id: str):
         if job.id.startswith(prefix):
             scheduler.remove_job(job.id)
     setup_news_fetch_jobs(user_id)
+
+
+_IMAGE_CLEANUP_JOB_ID = "image_cleanup"
+
+
+def _run_image_cleanup():
+    from app.logger import system_logger
+    from app.services.image_cleanup import cleanup_orphaned_images
+    try:
+        cleanup_orphaned_images()
+    except Exception as e:
+        system_logger.error(f"画像クリーンアップに失敗しました: {e}", exc_info=True)
+
+
+def setup_image_cleanup_job():
+    """未参照の添付画像を毎日1回（JST 4:00、低トラフィック帯）掃除するジョブを登録する。
+    ストレージが限られる環境での安全網（通常のライフサイクルでは即時削除される）。"""
+    scheduler.add_job(
+        _run_image_cleanup,
+        trigger=CronTrigger(hour=4, minute=0, timezone="Asia/Tokyo"),
+        id=_IMAGE_CLEANUP_JOB_ID,
+        replace_existing=True,
+    )

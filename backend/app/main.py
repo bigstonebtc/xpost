@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, get_engine, session_for
 from app.logger import system_logger
-from app.paths import images_dir
+from app.services.image_cleanup import cleanup_orphaned_images
 from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
 from app.routers import settings as settings_router
@@ -126,29 +126,6 @@ def _seed_posting_settings(user_id: str) -> None:
         db.close()
 
 
-def _cleanup_orphaned_images() -> None:
-    """どのツイートからも参照されていない画像ファイルを削除する（アップロードし直し・
-    投稿完了・破棄などで不要になったファイル）。mtimeだけで判定すると、長期間先に
-    スケジュールされた投稿の画像を誤って消してしまうため、DBの参照状況で判定する。"""
-    from app.models.tweet import Tweet
-
-    for user_id in users_config:
-        user_dir = images_dir(user_id)
-        if not user_dir.exists():
-            continue
-        db = session_for(user_id)
-        try:
-            referenced = {
-                row[0] for row in db.query(Tweet.image_path).filter(Tweet.image_path.isnot(None)).all()
-            }
-        finally:
-            db.close()
-        for f in user_dir.iterdir():
-            if f.is_file() and str(f) not in referenced:
-                f.unlink(missing_ok=True)
-                system_logger.info(f"user={user_id} 未参照の画像を削除: {f.name}")
-
-
 def _init_user(user_id: str) -> None:
     from app.services import posting_mode
     from app.services.scheduler import setup_news_fetch_jobs
@@ -181,7 +158,9 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             system_logger.error(f"user={user_id} の初期化に失敗しました（このユーザーは利用不可）: {e}")
 
-    _cleanup_orphaned_images()
+    cleanup_orphaned_images()
+    from app.services.scheduler import setup_image_cleanup_job
+    setup_image_cleanup_job()
     yield
 
 
