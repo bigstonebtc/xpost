@@ -5,7 +5,7 @@
 #
 # 処理内容（詳細はdocs/multi_user_design.md 14章参照）:
 #   1. Linuxユーザー作成（既存ならスキップ）
-#   2. /home/<user>/xpost/{conf,prompts,documents,logs,db} を作成
+#   2. /home/<user>/xpost/{conf,prompts,documents,logs,db,images} を作成
 #   3. env.conf を env.conf.example からコピー（既存なら上書きしない）
 #   4. news_search.prompt をテンプレートからコピー（既存なら上書きしない）
 #   5. ADMIN_PASSWORD_HASH / SECRET_KEY を自動生成・追記（既存フィールドは上書きしない）
@@ -52,7 +52,7 @@ HOME_DIR="$(getent passwd "$USERNAME" | cut -d: -f6)"
 XPOST_HOME="$HOME_DIR/xpost"
 
 # 2. ディレクトリ構造生成（既存はスキップ）
-mkdir -p "$XPOST_HOME"/conf "$XPOST_HOME"/prompts "$XPOST_HOME"/documents "$XPOST_HOME"/logs "$XPOST_HOME"/db
+mkdir -p "$XPOST_HOME"/conf "$XPOST_HOME"/prompts "$XPOST_HOME"/documents "$XPOST_HOME"/logs "$XPOST_HOME"/db "$XPOST_HOME"/images
 
 # 3. env.conf 処理
 ENV_CONF="$XPOST_HOME/conf/env.conf"

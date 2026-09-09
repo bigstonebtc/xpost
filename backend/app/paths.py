@@ -44,6 +44,10 @@ def db_path(user_id: str) -> Path:
     return user_root(user_id) / "db" / "queue.sqlite"
 
 
+def images_dir(user_id: str) -> Path:
+    return user_root(user_id) / "images"
+
+
 def all_user_ids() -> list[str]:
     """/home/<user>/xpost/conf/env.conf が存在するユーザー名の一覧を返す。"""
     if not HOME_ROOT.exists():
