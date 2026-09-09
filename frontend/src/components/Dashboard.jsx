@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { formatJstShort } from '../utils/jst'
 
 const styles = {
   card: { background: '#fff', borderRadius: '8px', padding: '20px', marginBottom: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
@@ -24,7 +25,7 @@ export default function Dashboard() {
 
   const formatTime = (iso) => {
     if (!iso) return 'なし'
-    return new Date(iso).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    return formatJstShort(iso)
   }
 
   if (err) return <p style={{ color: 'red', marginTop: '20px' }}>{err}</p>

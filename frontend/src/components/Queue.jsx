@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
+import { toJstDate, formatJst } from '../utils/jst'
 
 const s = {
   card: { background: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
@@ -69,12 +70,14 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
     const dd = String(days).padStart(2, '0')
     const hh = String(hours).padStart(2, '0')
     const mm = String(mins).padStart(2, '0')
-    const y = target.getFullYear()
-    const mo = target.getMonth() + 1
-    const d = target.getDate()
-    const th = String(target.getHours()).padStart(2, '0')
-    const tm = String(target.getMinutes()).padStart(2, '0')
-    return `${y}-${mo}-${d} ${th}:${tm} (${dd} d ${hh} h ${mm} m) 投稿予定`
+    // 閲覧者のブラウザのタイムゾーンに関係なく、常にJSTで表示する
+    const jst = toJstDate(iso)
+    const y = jst.getUTCFullYear()
+    const mo = jst.getUTCMonth() + 1
+    const d = jst.getUTCDate()
+    const th = String(jst.getUTCHours()).padStart(2, '0')
+    const tm = String(jst.getUTCMinutes()).padStart(2, '0')
+    return `${y}-${mo}-${d} ${th}:${tm} JST(${dd} d ${hh} h ${mm} m) 投稿予定`
   }
 
   const handlePost = async () => {
@@ -282,7 +285,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
                     <div style={s.modalTitle}>Error Details</div>
                     <div style={s.detailRow}><span style={s.detailLabel}>Error Code:</span>{tweet.error_code || '—'}</div>
                     <div style={s.detailRow}><span style={s.detailLabel}>Message:</span>{tweet.error_message || '—'}</div>
-                    <div style={s.detailRow}><span style={s.detailLabel}>Failed at:</span>{tweet.failed_at ? new Date(tweet.failed_at).toLocaleString('ja-JP') : '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Failed at:</span>{tweet.failed_at ? formatJst(tweet.failed_at, { withSeconds: true }) : '—'}</div>
                     <div style={s.detailRow}><span style={s.detailLabel}>Attempts:</span>{tweet.retry_attempt ?? 0}/3</div>
                     <div style={s.btnRow}>
                       <button style={s.btn('#718096')} onClick={() => setShowDetail(false)}>Close</button>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
+import { formatJstShort } from '../utils/jst'
 
 const s = {
   card: { background: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
@@ -17,8 +18,7 @@ const FILTERS = [
   { value: 'all', label: 'すべて' },
 ]
 
-const formatDate = (iso) =>
-  new Date(iso).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+const formatDate = (iso) => formatJstShort(iso)
 
 export default function History() {
   const [searchParams, setSearchParams] = useSearchParams()

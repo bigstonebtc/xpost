@@ -3,20 +3,29 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timezone
 
-from app.logger import app_logger, posting_logger, news_logger
+from app.logger import get_logger
 from app.utils.rate_limit import RateLimitExceeded
 
 scheduler = BackgroundScheduler(timezone="UTC")
 scheduler.start()
 
 
-def _execute_post(tweet_id: int):
-    from app.database import SessionLocal
+def _tweet_job_id(user_id: str, tweet_id: int) -> str:
+    return f"tweet:{user_id}:{tweet_id}"
+
+
+def _news_fetch_job_id(user_id: str, slot_number: int) -> str:
+    return f"news_fetch:{user_id}:{slot_number}"
+
+
+def _execute_post(user_id: str, tweet_id: int):
+    from app.database import session_for
     from app.models.tweet import Tweet, TweetStatus
     from app.services.poster import post_tweet_with_retry
     from pathlib import Path
 
-    db = SessionLocal()
+    posting_logger = get_logger(user_id, "posting")
+    db = session_for(user_id)
     try:
         tweet = db.query(Tweet).filter(Tweet.id == tweet_id).first()
         if not tweet:
@@ -28,7 +37,7 @@ def _execute_post(tweet_id: int):
         posting_logger.info(f"schedule executed: tweet_id={tweet_id}")
         image_path = tweet.image_path
         started_at = time.monotonic()
-        result = post_tweet_with_retry(tweet.content, image_path, tweet_id=tweet_id)
+        result = post_tweet_with_retry(user_id, tweet.content, image_path, tweet_id=tweet_id)
         elapsed = time.monotonic() - started_at
 
         if result.ok:
@@ -65,47 +74,50 @@ def _execute_post(tweet_id: int):
         db.close()
 
 
-def schedule_tweet(tweet_id: int, run_at: datetime):
+def schedule_tweet(user_id: str, tweet_id: int, run_at: datetime):
     scheduler.add_job(
         _execute_post,
         trigger="date",
         run_date=run_at,
-        args=[tweet_id],
-        id=f"tweet_{tweet_id}",
+        args=[user_id, tweet_id],
+        id=_tweet_job_id(user_id, tweet_id),
         replace_existing=True,
     )
 
 
-def unschedule_tweet(tweet_id: int):
+def unschedule_tweet(user_id: str, tweet_id: int):
     try:
-        scheduler.remove_job(f"tweet_{tweet_id}")
+        scheduler.remove_job(_tweet_job_id(user_id, tweet_id))
     except Exception:
         pass
 
 
-def _run_news_fetch():
+def _run_news_fetch(user_id: str):
     from app.services.news_fetcher import fetch_and_process
+    news_logger = get_logger(user_id, "news")
     news_logger.info("ニュース自動取得開始")
     try:
-        stats = fetch_and_process()
+        stats = fetch_and_process(user_id)
         news_logger.info(f"ニュース自動取得完了: {stats}")
     except Exception as e:
         news_logger.error(f"ニュース取得エラー: {e}", exc_info=True)
 
 
-def setup_news_fetch_jobs():
-    from app.database import SessionLocal
+def setup_news_fetch_jobs(user_id: str):
+    from app.database import session_for
     from app.models.news import FetchSchedule
 
-    db = SessionLocal()
+    app_logger = get_logger(user_id, "app")
+    db = session_for(user_id)
     try:
         slots = db.query(FetchSchedule).order_by(FetchSchedule.slot_number).all()
         for slot in slots:
-            job_id = f"news_fetch_slot_{slot.slot_number}"
+            job_id = _news_fetch_job_id(user_id, slot.slot_number)
             if slot.is_enabled:
                 scheduler.add_job(
                     _run_news_fetch,
                     trigger=CronTrigger(hour=slot.hour, minute=0, timezone="Asia/Tokyo"),
+                    args=[user_id],
                     id=job_id,
                     replace_existing=True,
                 )
@@ -119,8 +131,9 @@ def setup_news_fetch_jobs():
         db.close()
 
 
-def reload_news_fetch_jobs():
+def reload_news_fetch_jobs(user_id: str):
+    prefix = f"news_fetch:{user_id}:"
     for job in scheduler.get_jobs():
-        if job.id.startswith("news_fetch_slot_"):
+        if job.id.startswith(prefix):
             scheduler.remove_job(job.id)
-    setup_news_fetch_jobs()
+    setup_news_fetch_jobs(user_id)

@@ -4,9 +4,10 @@ from datetime import date
 
 import anthropic
 
-from app.config import settings
-from app.logger import generation_logger as logger
-from app.services.writer import PROMPTS_DIR, _load_documents, _parse_prompt_file
+from app.logger import get_logger
+from app.paths import prompts_dir
+from app.services.writer import _load_documents, _parse_prompt_file
+from app.user_registry import get_user_config
 from app.utils.rate_limit import check_and_record
 
 NEWS_SEARCH_PROMPT_FILE = "news_search.prompt"
@@ -21,25 +22,27 @@ _DEFAULT_SYSTEM_PROMPT = (
 )
 
 
-def _load_system_prompt() -> str:
-    path = PROMPTS_DIR / NEWS_SEARCH_PROMPT_FILE
+def _load_system_prompt(user_id: str) -> str:
+    path = prompts_dir(user_id) / NEWS_SEARCH_PROMPT_FILE
     if not path.exists():
         return _DEFAULT_SYSTEM_PROMPT
 
     cfg = _parse_prompt_file(path)
     system_prompt = cfg["prompt"] or _DEFAULT_SYSTEM_PROMPT
-    docs = _load_documents(cfg.get("documents", []))
+    docs = _load_documents(user_id, cfg.get("documents", []))
     if docs:
         system_prompt += "\n\n【参考資料】\n" + docs
     return system_prompt
 
 
 def search_news_for_tweet(
+    user_id: str,
     tweet_text: str,
     search_pattern: int | None = None,
     exclude_urls: list[str] | None = None,
 ) -> dict:
-    check_and_record("anthropic")
+    logger = get_logger(user_id, "generation")
+    check_and_record(user_id, "anthropic")
 
     exclude_urls = exclude_urls or []
     user_parts = [
@@ -55,12 +58,14 @@ def search_news_for_tweet(
 
     user_content = "\n\n".join(user_parts)
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    cfg = get_user_config(user_id)
+    api_key = cfg.anthropic_api_key if cfg else ""
+    client = anthropic.Anthropic(api_key=api_key)
     started_at = time.monotonic()
     message = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=8192,
-        system=_load_system_prompt(),
+        system=_load_system_prompt(user_id),
         tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
         messages=[{"role": "user", "content": user_content}],
     )

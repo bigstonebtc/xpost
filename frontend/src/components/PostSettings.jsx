@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api'
+import { formatJst } from '../utils/jst'
 
 const styles = {
   section: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '20px', marginBottom: '20px' },
@@ -24,7 +25,7 @@ const SCHEDULE_HOURS_MIN = 24
 const SCHEDULE_HOURS_MAX = 720
 
 export default function PostSettings() {
-  const [scheduleHours, setScheduleHours] = useState(24)
+  const [scheduleHours, setScheduleHours] = useState(120)
   const [dailyLimit, setDailyLimit] = useState(10)
   const [allowOver140, setAllowOver140] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -50,7 +51,7 @@ export default function PostSettings() {
     try {
       const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
-      setScheduleHours(postingData.schedule_hours ?? 24)
+      setScheduleHours(postingData.schedule_hours ?? 120)
       setAllowOver140(postingData.allow_over_140 ?? true)
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')
@@ -192,7 +193,7 @@ export default function PostSettings() {
         </div>
         <div style={styles.statusRow}>
           <span style={styles.statusLabel}>Last Checked:</span>
-          <span>{torStatus?.last_verified_at ? new Date(torStatus.last_verified_at).toLocaleString('ja-JP') : '—'}</span>
+          <span>{torStatus?.last_verified_at ? formatJst(torStatus.last_verified_at, { withSeconds: true }) : '—'}</span>
         </div>
         {torStatus && !torStatus.tor_connected && torStatus.error && (
           <p style={styles.errMsg}>{torStatus.error}</p>
@@ -279,7 +280,7 @@ export default function PostSettings() {
             <span style={{ fontSize: '13px', color: '#555' }}>時間以内にランダム投稿</span>
           </div>
           <p style={styles.note}>
-            指定した時間内で、日中（JST 7:00〜20:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
+            指定した時間内で、日中（JST 7:00〜21:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
           </p>
         </div>
         <button style={styles.saveBtn} onClick={save} disabled={saving}>

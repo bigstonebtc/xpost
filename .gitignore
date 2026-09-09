@@ -7,10 +7,6 @@ conf/prompts/relevance.conf
 
 # 素材ドキュメント・仕様書（VPS上のみ保管）
 docs/
-data/*
-!data/.gitkeep
-tweetsource/*
-!tweetsource/.gitkeep
 logs/*
 !logs/.gitkeep
 nginx/certs/
@@ -18,6 +14,10 @@ nginx/certs/
 # プロンプトファイル（秘匿情報。サーバー上でアプリから随時編集されるためGit管理対象外）
 prompts/*
 !prompts/.gitkeep
+
+# ユーザー個別資料（秘匿情報。サーバー上でユーザーが随時配置するためGit管理対象外）
+documents/*
+!documents/.gitkeep
 
 # Pythonキャッシュ
 __pycache__/

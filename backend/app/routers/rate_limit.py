@@ -7,8 +7,8 @@ router = APIRouter(prefix="/rate-limit", tags=["rate-limit"])
 
 
 @router.get("/usage")
-def usage(_=Depends(get_current_user)):
+def usage(user: str = Depends(get_current_user)):
     return {
-        "anthropic": get_usage("anthropic"),
-        "x_api": get_usage("x_api"),
+        "anthropic": get_usage(user, "anthropic"),
+        "x_api": get_usage(user, "x_api"),
     }

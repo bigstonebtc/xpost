@@ -6,16 +6,17 @@ from pathlib import Path
 
 import anthropic
 
-from app.config import settings
-from app.logger import generation_logger as logger
+from app.logger import get_logger
+from app.paths import documents_dir, prompts_dir
+from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 
-PROMPTS_DIR = Path("/app/prompts")
-DOCUMENTS_DIR = Path("/app/documents")
-
 _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文字以内のツイートを1件生成してください。JSON配列で返答。例: [\"ツイート本文\"]"
 _FALLBACK_NEWS_PROMPT = "あなたはXアカウントの運用担当です。提供されたニュース記事をもとに140文字以内のツイートを1件生成してください。URLは別途付与するため本文に含めないこと。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
+
+
+_HEADER_KEYS = {"name", "documents", "topics", "types"}
 
 
 def _parse_prompt_file(path: Path) -> dict:
@@ -38,19 +39,12 @@ def _parse_prompt_file(path: Path) -> dict:
             state = "prompt"
             continue
 
-        if line.startswith(" ") or line.startswith("\t"):
-            if state == "topics" and stripped and not stripped.startswith("#"):
-                topics_lines.append(stripped)
-            elif state == "types" and stripped and not stripped.startswith("#"):
-                types_lines.append(stripped)
-            continue
-
         if not stripped or stripped.startswith("#"):
             continue
 
-        if "=" in stripped:
-            key, _, val = stripped.partition("=")
-            key = key.strip()
+        key, sep, val = stripped.partition("=")
+        key = key.strip()
+        if sep and key in _HEADER_KEYS:
             val = val.strip()
             if key == "name":
                 name = val
@@ -66,6 +60,14 @@ def _parse_prompt_file(path: Path) -> dict:
                 state = "types"
                 if val:
                     types_lines.append(val)
+            continue
+
+        # topics=/types= の直後、次のキーか[prompt]が現れるまでの行は項目として扱う。
+        # インデントの有無は問わない（付け忘れで項目が消えるのを防ぐため）。
+        if state == "topics":
+            topics_lines.append(stripped)
+        elif state == "types":
+            types_lines.append(stripped)
 
     return {
         "name": name,
@@ -76,10 +78,10 @@ def _parse_prompt_file(path: Path) -> dict:
     }
 
 
-def _load_documents(doc_names: list[str]) -> str:
+def _load_documents(user_id: str, doc_names: list[str]) -> str:
     texts = []
     for name in doc_names:
-        path = DOCUMENTS_DIR / name
+        path = documents_dir(user_id) / name
         if path.is_file():
             try:
                 texts.append("【資料: " + name + "】\n" + path.read_text(encoding="utf-8", errors="ignore"))
@@ -88,9 +90,9 @@ def _load_documents(doc_names: list[str]) -> str:
     return "\n\n---\n\n".join(texts)
 
 
-def _resolve_prompt(prompt_file: str | None) -> dict:
+def _resolve_prompt(user_id: str, prompt_file: str | None) -> dict:
     if prompt_file:
-        path = PROMPTS_DIR / prompt_file
+        path = prompts_dir(user_id) / prompt_file
         if path.exists():
             return _parse_prompt_file(path)
     return {"name": "default", "documents": [], "topics": [], "types": [], "prompt": _FALLBACK_PROMPT}
@@ -106,11 +108,11 @@ def _pick(lst: list, n: int) -> list[str]:
     return pool[:n]
 
 
-def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
+def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict]) -> str:
     """同期で Claude API を1回呼び、ツイート1件を返す。
     スレッドセーフのためクライアントをスレッドごとに生成する。"""
-    check_and_record("anthropic")
-    _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    check_and_record(user_id, "anthropic")
+    _client = anthropic.Anthropic(api_key=api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",
         max_tokens=2048,
@@ -128,18 +130,22 @@ def _call_claude_once(system_prompt: str, user_content: list[dict]) -> str:
         return text[:1024]
 
 
-def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
-    cfg = _resolve_prompt(prompt_file)
-    logger.info(f"topics loaded: {len(cfg.get('topics', []))} items from {prompt_file or 'default'}")
+def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
+    logger = get_logger(user_id, "generation")
+    cfg = get_user_config(user_id)
+    api_key = cfg.anthropic_api_key if cfg else ""
 
-    source = _load_documents(cfg["documents"])
-    prompt_template = cfg["prompt"] or _FALLBACK_PROMPT
+    prompt_cfg = _resolve_prompt(user_id, prompt_file)
+    logger.info(f"topics loaded: {len(prompt_cfg.get('topics', []))} items from {prompt_file or 'default'}")
+
+    source = _load_documents(user_id, prompt_cfg["documents"])
+    prompt_template = prompt_cfg["prompt"] or _FALLBACK_PROMPT
 
     use_topic = "{topic}" in prompt_template
     use_type = "{type}" in prompt_template
 
-    selected_topics = _pick(cfg.get("topics", []), count) if use_topic else []
-    shuffled_types = _pick(cfg.get("types", []), count) if use_type else []
+    selected_topics = _pick(prompt_cfg.get("topics", []), count) if use_topic else []
+    shuffled_types = _pick(prompt_cfg.get("types", []), count) if use_type else []
 
     if use_topic:
         topic_ids = [t.split(".")[0] for t in selected_topics]
@@ -180,7 +186,10 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
     started_at = time.monotonic()
     results = [""] * count
     with ThreadPoolExecutor(max_workers=count) as executor:
-        future_to_idx = {executor.submit(_call_claude_once, p, uc): i for i, (p, uc) in enumerate(calls)}
+        future_to_idx = {
+            executor.submit(_call_claude_once, user_id, api_key, p, uc): i
+            for i, (p, uc) in enumerate(calls)
+        }
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
             try:
@@ -196,14 +205,18 @@ def generate_tweets(past_tweets: list[str], prompt_file: str | None = None, coun
 
 
 def generate_tweet_from_news(
+    user_id: str,
     title: str,
     summary: str,
     max_chars: int = 128,
     prompt_file: str | None = None,
 ) -> str:
-    cfg = _resolve_prompt(prompt_file)
-    system_prompt = cfg["prompt"] or _FALLBACK_NEWS_PROMPT
-    source = _load_documents(cfg["documents"])
+    cfg = get_user_config(user_id)
+    api_key = cfg.anthropic_api_key if cfg else ""
+
+    prompt_cfg = _resolve_prompt(user_id, prompt_file)
+    system_prompt = prompt_cfg["prompt"] or _FALLBACK_NEWS_PROMPT
+    source = _load_documents(user_id, prompt_cfg["documents"])
 
     system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
     user_content = []
@@ -225,8 +238,8 @@ def generate_tweet_from_news(
         ),
     })
 
-    check_and_record("anthropic")
-    _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    check_and_record(user_id, "anthropic")
+    _client = anthropic.Anthropic(api_key=api_key)
     message = _client.messages.create(
         model="claude-opus-4-7",
         max_tokens=512,

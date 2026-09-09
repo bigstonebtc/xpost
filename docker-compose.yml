@@ -1,20 +1,7 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: always
-    env_file: ./conf/env.conf
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   tor:
     build: ./tor
     restart: always
-    env_file: ./conf/env.conf
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "9050"]
       interval: 10s
@@ -24,20 +11,14 @@ services:
   backend:
     build: ./backend
     restart: always
-    env_file: ./conf/env.conf
     depends_on:
-      db:
-        condition: service_healthy
       tor:
         condition: service_healthy
     volumes:
-      - ./data:/app/data:ro
-      - ./tweetsource:/app/tweetsource:ro
-      - ./conf/env.conf:/app/conf/env.conf
-      - ./conf/prompts:/app/conf/prompts
-      - ./prompts:/app/prompts
-      - ./documents:/app/documents:ro
-      - ./logs:/app/logs
+      # 各ユーザーの設定・DB・プロンプト・資料・ログは /home/<user>/xpost/ 以下にあり、
+      # backendは単一プロセスで全ユーザー分をこのマウント経由で読み書きする
+      # （共有プログラムモード。詳細はdocs/multi_user_design.md参照）。
+      - /home:/home
       # Tor Serviceの[Restart]機能（POST /tor/restart）用。
       # backendにホストのDockerデーモン制御権を与えるため取り扱いに注意。
       - /var/run/docker.sock:/var/run/docker.sock
@@ -57,6 +38,3 @@ services:
       - frontend
     volumes:
       - ./nginx/certs:/etc/nginx/certs:ro
-
-volumes:
-  postgres_data:

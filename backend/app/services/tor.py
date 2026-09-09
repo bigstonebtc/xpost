@@ -3,11 +3,15 @@ from datetime import datetime, timezone
 
 import requests
 
-from app.config import settings
-from app.logger import app_logger
+from app.logger import system_logger
 
 # Tor Project公式のチェックAPI。Tor経由かどうか(IsTor)と出口IPを同時に確認できる
 _CHECK_URL = "https://check.torproject.org/api/ip"
+
+# Torコンテナは全ユーザー共有（docker-compose.yml上に1つだけ存在する）。
+# docker restart対象コンテナの検索ラベル値はインフラ構成であり、ユーザーごとの
+# env.confには含めない。
+TOR_COMPOSE_SERVICE = "tor"
 
 _last_status = {
     "status": "error",
@@ -18,14 +22,14 @@ _last_status = {
 }
 
 
-def check_status() -> dict:
+def check_status(tor_proxy: str, tor_timeout: int) -> dict:
     """Tor SOCKS5プロキシ経由で外部サービスに接続し、実際にTor経由になっているか、
     出口IPが何かを確認する。"""
-    proxies = {"http": settings.tor_proxy, "https": settings.tor_proxy}
+    proxies = {"http": tor_proxy, "https": tor_proxy}
     now = datetime.now(timezone.utc).isoformat()
 
     try:
-        resp = requests.get(_CHECK_URL, proxies=proxies, timeout=settings.tor_timeout)
+        resp = requests.get(_CHECK_URL, proxies=proxies, timeout=tor_timeout)
         resp.raise_for_status()
         data = resp.json()
         exit_ip = data.get("IP")
@@ -52,7 +56,7 @@ def check_status() -> dict:
             "status": "error",
             "tor_connected": False,
             "exit_ip": None,
-            "error": f"Cannot connect to Tor proxy at {settings.tor_proxy}: {e}",
+            "error": f"Cannot connect to Tor proxy at {tor_proxy}: {e}",
             "last_verified_at": now,
         }
 
@@ -66,20 +70,21 @@ def get_cached_status() -> dict:
 
 
 def restart_tor_container(wait_healthy_seconds: int = 30) -> dict:
-    """docker socket経由でtorコンテナを再起動し、healthyに戻るまで待ってからステータス確認する。"""
+    """docker socket経由でtorコンテナを再起動し、healthyに戻るまで待ってからステータス確認する。
+    Torコンテナは全ユーザー共有のため、この操作は全ユーザーの投稿処理に一時的に影響しうる。"""
     import docker
 
     client = docker.from_env()
     containers = client.containers.list(
         all=True,
-        filters={"label": f"com.docker.compose.service={settings.tor_compose_service}"},
+        filters={"label": f"com.docker.compose.service={TOR_COMPOSE_SERVICE}"},
     )
     if not containers:
         raise RuntimeError(
-            f"torコンテナが見つかりません（label com.docker.compose.service={settings.tor_compose_service}）"
+            f"torコンテナが見つかりません（label com.docker.compose.service={TOR_COMPOSE_SERVICE}）"
         )
     container = containers[0]
-    app_logger.info(f"torコンテナを再起動します: {container.name} ({container.id[:12]})")
+    system_logger.info(f"torコンテナを再起動します: {container.name} ({container.id[:12]})")
     container.restart(timeout=10)
 
     deadline = time.monotonic() + wait_healthy_seconds
@@ -90,6 +95,6 @@ def restart_tor_container(wait_healthy_seconds: int = 30) -> dict:
             break
         time.sleep(2)
     else:
-        app_logger.warning(f"torコンテナがhealthyになる前にタイムアウトしました: {container.name}")
+        system_logger.warning(f"torコンテナがhealthyになる前にタイムアウトしました: {container.name}")
 
-    return check_status()
+    return None

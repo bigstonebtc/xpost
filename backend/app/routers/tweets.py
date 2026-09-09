@@ -22,12 +22,12 @@ class GenerateRequest(BaseModel):
 
 
 @router.post("/generate")
-def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     queue_count = db.query(Tweet).filter(Tweet.status == TweetStatus.queued).count()
     if queue_count >= 100:
         raise HTTPException(status_code=400, detail="キューが上限（100件）に達しています")
 
-    allowed, reset_at = would_allow("anthropic")
+    allowed, reset_at = would_allow(user, "anthropic")
     if not allowed:
         raise HTTPException(status_code=429, detail=format_message("anthropic", reset_at))
 
@@ -40,7 +40,7 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
     )
     history = [t.content for t in posted_tweets]
 
-    new_tweets = generate_tweets(history, prompt_file=body.prompt_file)
+    new_tweets = generate_tweets(user, history, prompt_file=body.prompt_file)
     for content in new_tweets:
         db.add(Tweet(content=content, status=TweetStatus.queued))
     db.commit()
@@ -61,13 +61,14 @@ def _get_queued_tweet(tweet_id: int, db: Session) -> Tweet:
 
 
 @router.post("/{tweet_id}/news/search")
-def search_news(tweet_id: int, body: NewsSearchRequest, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def search_news(tweet_id: int, body: NewsSearchRequest, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     tweet = _get_queued_tweet(tweet_id, db)
     if _ATTACHED_URL_RE.search(tweet.content):
         raise HTTPException(status_code=400, detail="既にニュースURLが付与されています。先に削除してください。")
 
     try:
         return search_news_for_tweet(
+            user,
             tweet.content,
             search_pattern=body.search_pattern,
             exclude_urls=body.exclude_urls,

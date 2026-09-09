@@ -2,13 +2,15 @@ import threading
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from app.logger import app_logger as logger
+from app.logger import get_logger
 
 LIMITS = {"anthropic": 500, "x_api": 100}
 WINDOW = timedelta(hours=1)
 
 _lock = threading.Lock()
-_timestamps: dict[str, list[datetime]] = defaultdict(list)
+# (user_id, api_type) をキーにする。ユーザーごとにAPIキーが別なので、
+# レート制限もユーザー間で共有せず独立させる。
+_timestamps: dict[tuple[str, str], list[datetime]] = defaultdict(list)
 
 
 class RateLimitExceeded(Exception):
@@ -18,50 +20,53 @@ class RateLimitExceeded(Exception):
         super().__init__(f"API rate limit exceeded: {api_type}")
 
 
-def _prune(api_type: str, now: datetime) -> list[datetime]:
+def _prune(key: tuple[str, str], now: datetime) -> list[datetime]:
     cutoff = now - WINDOW
-    timestamps = [ts for ts in _timestamps[api_type] if ts > cutoff]
-    _timestamps[api_type] = timestamps
+    timestamps = [ts for ts in _timestamps[key] if ts > cutoff]
+    _timestamps[key] = timestamps
     return timestamps
 
 
-def would_allow(api_type: str) -> tuple[bool, datetime | None]:
+def would_allow(user_id: str, api_type: str) -> tuple[bool, datetime | None]:
     """記録はせず、現時点で呼び出し可能かどうかだけを確認する（事前チェック用）。"""
     limit = LIMITS.get(api_type)
     if limit is None:
         return True, None
+    key = (user_id, api_type)
     now = datetime.now(timezone.utc)
     with _lock:
-        timestamps = _prune(api_type, now)
+        timestamps = _prune(key, now)
         if len(timestamps) >= limit:
             return False, min(timestamps) + WINDOW
     return True, None
 
 
-def check_and_record(api_type: str) -> None:
+def check_and_record(user_id: str, api_type: str) -> None:
     """呼び出し直前に使う。上限内なら1回分を記録し、上限超過なら RateLimitExceeded を送出する。
     チェックと記録を同一ロック内で行うことで、並行呼び出しでの上限超過を防ぐ。"""
     limit = LIMITS.get(api_type)
     if limit is None:
         return
 
+    key = (user_id, api_type)
     now = datetime.now(timezone.utc)
     with _lock:
-        timestamps = _prune(api_type, now)
+        timestamps = _prune(key, now)
         if len(timestamps) >= limit:
             reset_at = min(timestamps) + WINDOW
-            logger.warning(f"API rate limit exceeded: {api_type} ({len(timestamps)}/{limit})")
+            get_logger(user_id).warning(f"API rate limit exceeded: api={api_type} ({len(timestamps)}/{limit})")
             raise RateLimitExceeded(api_type, reset_at)
-        _timestamps[api_type].append(now)
+        _timestamps[key].append(now)
 
 
-def get_usage(api_type: str) -> dict:
+def get_usage(user_id: str, api_type: str) -> dict:
     limit = LIMITS.get(api_type)
     if limit is None:
         return {"used": 0, "limit": None}
+    key = (user_id, api_type)
     now = datetime.now(timezone.utc)
     with _lock:
-        used = len(_prune(api_type, now))
+        used = len(_prune(key, now))
     return {"used": used, "limit": limit}
 
 
