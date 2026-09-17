@@ -131,7 +131,7 @@ def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_conte
         return text[:1024]
 
 
-def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
+def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[dict]:
     logger = get_logger(user_id, "generation")
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
@@ -164,10 +164,12 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
     def build_call(i: int):
         # str.replace() を使用（str.format() は {topic}/{type} でKeyErrorになるため不可）
         prompt = prompt_template
+        topic = selected_topics[i] if use_topic else None
+        type_ = shuffled_types[i] if use_type else None
         if use_topic:
-            prompt = prompt.replace("{topic}", selected_topics[i])
+            prompt = prompt.replace("{topic}", topic)
         if use_type:
-            prompt = prompt.replace("{type}", shuffled_types[i])
+            prompt = prompt.replace("{type}", type_)
 
         user_content = []
         if source:
@@ -180,7 +182,7 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
             "type": "text",
             "text": past_section + "\n\n" + instruction if past_section else instruction,
         })
-        return prompt, user_content
+        return prompt, user_content, topic, type_
 
     calls = [build_call(i) for i in range(count)]
 
@@ -189,7 +191,7 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
     with ThreadPoolExecutor(max_workers=count) as executor:
         future_to_idx = {
             executor.submit(_call_claude_once, user_id, api_key, p, uc): i
-            for i, (p, uc) in enumerate(calls)
+            for i, (p, uc, _, _) in enumerate(calls)
         }
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
@@ -200,7 +202,10 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
             except Exception as e:
                 logger.error(f"Claude API call failed [{idx}]: {e}")
 
-    generated = [t for t in results if t]
+    generated = [
+        {"content": text, "topic": calls[i][2], "type": calls[i][3]}
+        for i, text in enumerate(results) if text
+    ]
     logger.info(f"generated {len(generated)} tweets in {time.monotonic() - started_at:.1f}s")
     return generated
 

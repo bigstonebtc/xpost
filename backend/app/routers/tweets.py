@@ -41,8 +41,13 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
     history = [t.content for t in posted_tweets]
 
     new_tweets = generate_tweets(user, history, prompt_file=body.prompt_file)
-    for content in new_tweets:
-        db.add(Tweet(content=content, status=TweetStatus.queued))
+    for item in new_tweets:
+        db.add(Tweet(
+            content=item["content"],
+            status=TweetStatus.queued,
+            used_topic=item.get("topic"),
+            used_type=item.get("type"),
+        ))
     db.commit()
 
     return {"generated": len(new_tweets)}

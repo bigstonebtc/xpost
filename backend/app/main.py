@@ -23,6 +23,19 @@ from app.user_registry import load_all_users, users_config
 import app.models  # noqa: F401
 
 
+def _ensure_tweet_topic_type_columns(user_id: str) -> None:
+    """generate_tweetsで使用したtopic/typeを記録するカラムを追加する（冪等）。
+    create_allは既存テーブルへの列追加を行わないため、手動でALTER TABLEする。"""
+    engine = get_engine(user_id)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(tweets)").fetchall()}
+        if "used_topic" not in cols:
+            conn.exec_driver_sql("ALTER TABLE tweets ADD COLUMN used_topic TEXT")
+        if "used_type" not in cols:
+            conn.exec_driver_sql("ALTER TABLE tweets ADD COLUMN used_type TEXT")
+        conn.commit()
+
+
 def _recover_scheduled_tweets(user_id: str) -> None:
     from app.models.tweet import Tweet, TweetStatus
     from app.services.scheduler import schedule_tweet
@@ -134,6 +147,7 @@ def _init_user(user_id: str) -> None:
     cfg = users_config[user_id]
     engine = get_engine(user_id)
     Base.metadata.create_all(bind=engine)
+    _ensure_tweet_topic_type_columns(user_id)
 
     _seed_news_data(user_id)
     _ensure_news_sources_v2(user_id)

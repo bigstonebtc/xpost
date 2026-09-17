@@ -33,3 +33,6 @@ class Tweet(Base):
     retry_attempt = Column(Integer, default=0, nullable=False)
     failed_at = Column(TZDateTime(), nullable=True)
     posted_via_tor = Column(Boolean, default=False, nullable=False)
+    # --- 生成時に使用したtopic/type（プロンプトに{topic}/{type}が含まれる場合のみ記録） ---
+    used_topic = Column(Text, nullable=True)
+    used_type = Column(Text, nullable=True)

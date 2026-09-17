@@ -51,6 +51,8 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [newsPattern, setNewsPattern] = useState(0)
   const [newsExcludeUrls, setNewsExcludeUrls] = useState([])
   const [showDetail, setShowDetail] = useState(false)
+  const [showGenDetail, setShowGenDetail] = useState(false)
+  const genDetailMouseDownOnOverlay = useRef(false)
 
   const isScheduled = tweet.status === 'scheduled'
   const isFailed = tweet.status === 'failed'
@@ -321,8 +323,29 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
                   <button style={s.btn('#dd8800')} onClick={handleNewsOpen} disabled={loading}>news</button>
                 )}
                 <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
+                <button style={s.btn('#718096')} onClick={() => setShowGenDetail(true)} disabled={loading}>詳細</button>
                 <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
               </div>
+
+              {showGenDetail && (
+                <div
+                  style={s.overlay}
+                  onMouseDown={e => { genDetailMouseDownOnOverlay.current = e.target === e.currentTarget }}
+                  onClick={e => {
+                    if (genDetailMouseDownOnOverlay.current && e.target === e.currentTarget) setShowGenDetail(false)
+                    genDetailMouseDownOnOverlay.current = false
+                  }}
+                >
+                  <div style={s.modal}>
+                    <div style={s.modalTitle}>Details</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Topic:</span>{tweet.used_topic || '—'}</div>
+                    <div style={s.detailRow}><span style={s.detailLabel}>Type:</span>{tweet.used_type || '—'}</div>
+                    <div style={s.btnRow}>
+                      <button style={s.btn('#718096')} onClick={() => setShowGenDetail(false)}>Close</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {newsPanelOpen && (
                 <div style={s.newsPanel}>
