@@ -85,7 +85,7 @@ function SettingsLayout({ legacyNewsEnabled }) {
           {({ isActive }) => <button style={tabStyle(isActive)}>API設定</button>}
         </NavLink>
         <NavLink to="/settings/claude" style={{ textDecoration: 'none' }}>
-          {({ isActive }) => <button style={tabStyle(isActive)}>Claude API設定</button>}
+          {({ isActive }) => <button style={tabStyle(isActive)}>課金統計</button>}
         </NavLink>
       </div>
       <div style={{ paddingTop: '16px' }}>
