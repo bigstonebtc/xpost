@@ -8,6 +8,7 @@ import anthropic
 
 from app.logger import get_logger
 from app.paths import documents_dir, prompts_dir
+from app.services.claude_usage import log_claude_usage
 from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
@@ -109,7 +110,7 @@ def _pick(lst: list, n: int) -> list[str]:
     return pool[:n]
 
 
-def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict]) -> str:
+def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict], operation_type: str = "generation") -> str:
     """同期で Claude API を1回呼び、ツイート1件を返す。
     スレッドセーフのためクライアントをスレッドごとに生成する。"""
     check_and_record(user_id, "anthropic")
@@ -120,6 +121,7 @@ def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_conte
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],
     )
+    log_claude_usage(user_id, operation_type, message.usage.input_tokens, message.usage.output_tokens)
     text = message.content[0].text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
@@ -252,6 +254,7 @@ def generate_tweet_from_news(
         system=system,
         messages=[{"role": "user", "content": user_content}],
     )
+    log_claude_usage(user_id, "news_tweet", message.usage.input_tokens, message.usage.output_tokens)
 
     text = message.content[0].text.strip()
     if text.startswith("```"):
@@ -289,4 +292,4 @@ def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> st
         ),
     })
 
-    return _call_claude_once(user_id, api_key, system_prompt, user_content)
+    return _call_claude_once(user_id, api_key, system_prompt, user_content, operation_type="revision")

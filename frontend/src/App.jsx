@@ -11,6 +11,7 @@ import News from './components/News'
 import NewsSettings from './components/NewsSettings'
 import ApiKeySettings from './components/ApiKeySettings'
 import PostSettings from './components/PostSettings'
+import ClaudeSettings from './components/ClaudeSettings'
 
 const styles = {
   nav: { background: '#1a1a2e', color: '#fff', padding: '12px 16px', display: 'flex', gap: '20px', alignItems: 'center' },
@@ -83,12 +84,16 @@ function SettingsLayout({ legacyNewsEnabled }) {
         <NavLink to="/settings/api" style={{ textDecoration: 'none' }}>
           {({ isActive }) => <button style={tabStyle(isActive)}>API設定</button>}
         </NavLink>
+        <NavLink to="/settings/claude" style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>Claude API設定</button>}
+        </NavLink>
       </div>
       <div style={{ paddingTop: '16px' }}>
         <Routes>
           <Route index element={<PostSettings />} />
           {legacyNewsEnabled && <Route path="news" element={<NewsSettings />} />}
           <Route path="api" element={<ApiKeySettings />} />
+          <Route path="claude" element={<ClaudeSettings />} />
         </Routes>
       </div>
     </div>

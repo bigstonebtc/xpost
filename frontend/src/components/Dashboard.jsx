@@ -11,6 +11,14 @@ function formatForecastDate(dateStr) {
   return `${m}/${d}(${WEEKDAYS[dt.getUTCDay()]})`
 }
 
+function formatCost(usd) {
+  return `$${usd >= 1 ? usd.toFixed(2) : usd.toFixed(4)}`
+}
+
+function formatTokens(n) {
+  return n.toLocaleString('en-US')
+}
+
 const styles = {
   card: { background: '#fff', borderRadius: '8px', padding: '20px', marginBottom: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
   clickableCard: { background: '#fff', borderRadius: '8px', padding: '20px', marginBottom: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', textDecoration: 'none', display: 'block', color: 'inherit' },
@@ -25,10 +33,12 @@ const styles = {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
+  const [claudeStats, setClaudeStats] = useState(null)
   const [err, setErr] = useState('')
 
   useEffect(() => {
     api.stats().then(setStats).catch(e => setErr(e.message))
+    api.claudeStats().then(setClaudeStats).catch(() => {})
   }, [])
 
   const formatTime = (iso) => {
@@ -84,6 +94,27 @@ export default function Dashboard() {
         <div style={styles.label}>次の投稿予定</div>
         <div style={styles.valueSmall}>{formatTime(stats.next_scheduled_at)}</div>
       </div>
+
+      {claudeStats && (
+        <div style={styles.card}>
+          <div style={styles.label}>Claude API 利用統計</div>
+          <div style={styles.valueSmall}>本日 {formatCost(claudeStats.today.cost_usd)}</div>
+          <div style={styles.subRows}>
+            <div style={styles.subRow}>
+              <span style={styles.subLabel}>本日（入力/出力 tokens）</span>
+              <span style={styles.subValue}>{formatTokens(claudeStats.today.input_tokens)} / {formatTokens(claudeStats.today.output_tokens)}</span>
+            </div>
+            <div style={styles.subRow}>
+              <span style={styles.subLabel}>今月の推定コスト</span>
+              <span style={styles.subValue}>{formatCost(claudeStats.this_month.cost_usd)}</span>
+            </div>
+            <div style={styles.subRow}>
+              <span style={styles.subLabel}>今月（入力/出力 tokens）</span>
+              <span style={styles.subValue}>{formatTokens(claudeStats.this_month.input_tokens)} / {formatTokens(claudeStats.this_month.output_tokens)}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

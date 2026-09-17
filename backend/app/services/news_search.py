@@ -6,6 +6,7 @@ import anthropic
 
 from app.logger import get_logger
 from app.paths import prompts_dir
+from app.services.claude_usage import log_claude_usage
 from app.services.writer import _load_documents, _parse_prompt_file
 from app.user_registry import get_user_config
 from app.utils.rate_limit import check_and_record
@@ -70,6 +71,7 @@ def search_news_for_tweet(
         messages=[{"role": "user", "content": user_content}],
     )
     elapsed = time.monotonic() - started_at
+    log_claude_usage(user_id, "news_search", message.usage.input_tokens, message.usage.output_tokens)
 
     if message.stop_reason == "max_tokens":
         logger.error(f"news-search: max_tokensに到達し最終回答を得られませんでした ({elapsed:.1f}s)")
