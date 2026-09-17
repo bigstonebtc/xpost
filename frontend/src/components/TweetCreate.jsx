@@ -27,7 +27,8 @@ function PromptCard({ prompt }) {
     setGenMsg(null)
     try {
       const res = await api.generateWithPrompt(prompt.filename)
-      setGenMsg({ ok: true, text: `${res.generated}件をキューに追加しました` })
+      const costText = res.tokens != null ? ` ${res.tokens}token($${res.cost_usd.toFixed(2)})` : ''
+      setGenMsg({ ok: true, text: `${res.generated}件をキューに追加しました${costText}` })
     } catch (e) {
       setGenMsg({ ok: false, text: e.message })
     } finally {

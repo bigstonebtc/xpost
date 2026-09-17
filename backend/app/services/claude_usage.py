@@ -50,6 +50,12 @@ def get_pricing_config(user_id: str) -> dict:
         return dict(DEFAULT_PRICING)
 
 
+def estimate_cost(user_id: str, input_tokens: int, output_tokens: int) -> float:
+    """現在のpricing.json設定でのコスト見積り（USD）を返す。"""
+    pricing = get_pricing_config(user_id)
+    return round(_calc_cost(input_tokens, output_tokens, pricing), 4)
+
+
 def update_pricing_config(user_id: str, input_price: float, output_price: float) -> dict:
     path = _pricing_path(user_id)
     path.parent.mkdir(parents=True, exist_ok=True)

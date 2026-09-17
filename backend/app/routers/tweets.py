@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.tweet import Tweet, TweetStatus
+from app.services.claude_usage import estimate_cost
 from app.services.writer import generate_tweets
 from app.services.news_search import search_news_for_tweet
 from app.dependencies import get_current_user
@@ -40,8 +41,8 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
     )
     history = [t.content for t in posted_tweets]
 
-    new_tweets = generate_tweets(user, history, prompt_file=body.prompt_file)
-    for item in new_tweets:
+    result = generate_tweets(user, history, prompt_file=body.prompt_file)
+    for item in result["tweets"]:
         db.add(Tweet(
             content=item["content"],
             status=TweetStatus.queued,
@@ -50,7 +51,10 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
         ))
     db.commit()
 
-    return {"generated": len(new_tweets)}
+    total_tokens = result["input_tokens"] + result["output_tokens"]
+    cost_usd = estimate_cost(user, result["input_tokens"], result["output_tokens"])
+
+    return {"generated": len(result["tweets"]), "tokens": total_tokens, "cost_usd": cost_usd}
 
 
 class NewsSearchRequest(BaseModel):

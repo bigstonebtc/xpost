@@ -110,8 +110,8 @@ def _pick(lst: list, n: int) -> list[str]:
     return pool[:n]
 
 
-def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict], operation_type: str = "generation") -> str:
-    """同期で Claude API を1回呼び、ツイート1件を返す。
+def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict], operation_type: str = "generation") -> dict:
+    """同期で Claude API を1回呼び、ツイート1件とトークン使用量を返す。
     スレッドセーフのためクライアントをスレッドごとに生成する。"""
     check_and_record(user_id, "anthropic")
     _client = anthropic.Anthropic(api_key=api_key)
@@ -127,13 +127,18 @@ def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_conte
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
     try:
         items = json.loads(text)
-        return (items[0] if items else "")[:1024]
+        content = (items[0] if items else "")[:1024]
     except Exception:
         # JSONパース失敗時はテキストをそのまま使う
-        return text[:1024]
+        content = text[:1024]
+    return {
+        "text": content,
+        "input_tokens": message.usage.input_tokens,
+        "output_tokens": message.usage.output_tokens,
+    }
 
 
-def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[dict]:
+def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> dict:
     logger = get_logger(user_id, "generation")
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
@@ -189,7 +194,7 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
     calls = [build_call(i) for i in range(count)]
 
     started_at = time.monotonic()
-    results = [""] * count
+    results = [None] * count
     with ThreadPoolExecutor(max_workers=count) as executor:
         future_to_idx = {
             executor.submit(_call_claude_once, user_id, api_key, p, uc): i
@@ -204,12 +209,21 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
             except Exception as e:
                 logger.error(f"Claude API call failed [{idx}]: {e}")
 
-    generated = [
-        {"content": text, "topic": calls[i][2], "type": calls[i][3]}
-        for i, text in enumerate(results) if text
-    ]
+    generated = []
+    total_input_tokens = total_output_tokens = 0
+    for i, result in enumerate(results):
+        if not result or not result["text"]:
+            continue
+        generated.append({"content": result["text"], "topic": calls[i][2], "type": calls[i][3]})
+        total_input_tokens += result["input_tokens"]
+        total_output_tokens += result["output_tokens"]
+
     logger.info(f"generated {len(generated)} tweets in {time.monotonic() - started_at:.1f}s")
-    return generated
+    return {
+        "tweets": generated,
+        "input_tokens": total_input_tokens,
+        "output_tokens": total_output_tokens,
+    }
 
 
 def generate_tweet_from_news(
@@ -292,4 +306,4 @@ def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> st
         ),
     })
 
-    return _call_claude_once(user_id, api_key, system_prompt, user_content, operation_type="revision")
+    return _call_claude_once(user_id, api_key, system_prompt, user_content, operation_type="revision")["text"]
