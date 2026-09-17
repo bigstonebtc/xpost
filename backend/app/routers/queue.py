@@ -125,7 +125,7 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
                 else_=2,
             ),
             nulls_last(asc(Tweet.scheduled_at)),
-            Tweet.id.asc()
+            Tweet.id.desc()
         )
         .all()
     )
