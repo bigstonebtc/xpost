@@ -3,6 +3,14 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { formatJstShort } from '../utils/jst'
 
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+function formatForecastDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return `${m}/${d}(${WEEKDAYS[dt.getUTCDay()]})`
+}
+
 const styles = {
   card: { background: '#fff', borderRadius: '8px', padding: '20px', marginBottom: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
   clickableCard: { background: '#fff', borderRadius: '8px', padding: '20px', marginBottom: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', textDecoration: 'none', display: 'block', color: 'inherit' },
@@ -42,14 +50,12 @@ export default function Dashboard() {
         <div style={styles.label}>キュー件数(合計)</div>
         <div style={styles.value}>{stats.scheduled_count}</div>
         <div style={styles.subRows}>
-          <div style={styles.subRow}>
-            <span style={styles.subLabel}>今日のSchedule</span>
-            <span style={styles.subValue}>{stats.today_scheduled} / {stats.daily_schedule_limit}件</span>
-          </div>
-          <div style={styles.subRow}>
-            <span style={styles.subLabel}>明日のSchedule</span>
-            <span style={styles.subValue}>{stats.tomorrow_scheduled} / {stats.daily_schedule_limit}件</span>
-          </div>
+          {stats.schedule_forecast.map(day => (
+            <div key={day.date} style={styles.subRow}>
+              <span style={styles.subLabel}>{formatForecastDate(day.date)}</span>
+              <span style={styles.subValue}>{day.scheduled_count} / {day.daily_schedule_limit}件</span>
+            </div>
+          ))}
         </div>
       </div>
 

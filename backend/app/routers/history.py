@@ -48,7 +48,6 @@ def list_history(
 @router.get("/stats")
 def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
     today_start, tomorrow_start = _jst_day_range(0)
-    day_after_tomorrow_start = tomorrow_start + timedelta(days=1)
     yesterday_start, _ = _jst_day_range(1)
     now_jst = datetime.now(JST)
     month_start = now_jst.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
@@ -62,16 +61,20 @@ def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
     month_count = posted.filter(Tweet.posted_at >= month_start).count()
     total_count = posted.count()
 
-    scheduled_q = db.query(Tweet).filter(Tweet.status == TweetStatus.scheduled)
-    today_scheduled = scheduled_q.filter(
-        Tweet.scheduled_at >= today_start, Tweet.scheduled_at < tomorrow_start
-    ).count()
-    tomorrow_scheduled = scheduled_q.filter(
-        Tweet.scheduled_at >= tomorrow_start, Tweet.scheduled_at < day_after_tomorrow_start
-    ).count()
-
     ps = db.query(PostingSettings).first()
     daily_schedule_limit = ps.daily_schedule_limit if ps else 10
+
+    scheduled_q = db.query(Tweet).filter(Tweet.status == TweetStatus.scheduled)
+    schedule_forecast = []
+    for i in range(10):
+        day_start = today_start + timedelta(days=i)
+        day_end = day_start + timedelta(days=1)
+        day_count = scheduled_q.filter(Tweet.scheduled_at >= day_start, Tweet.scheduled_at < day_end).count()
+        schedule_forecast.append({
+            "date": (now_jst.date() + timedelta(days=i)).isoformat(),
+            "scheduled_count": day_count,
+            "daily_schedule_limit": daily_schedule_limit,
+        })
 
     next_scheduled = (
         db.query(Tweet)
@@ -87,7 +90,6 @@ def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
         "month_posted": month_count,
         "total_posted": total_count,
         "next_scheduled_at": next_scheduled.scheduled_at if next_scheduled else None,
-        "today_scheduled": today_scheduled,
-        "tomorrow_scheduled": tomorrow_scheduled,
         "daily_schedule_limit": daily_schedule_limit,
+        "schedule_forecast": schedule_forecast,
     }

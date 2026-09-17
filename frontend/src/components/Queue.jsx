@@ -323,7 +323,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
                   <button style={s.btn('#dd8800')} onClick={handleNewsOpen} disabled={loading}>news</button>
                 )}
                 <button style={s.btn('#718096')} onClick={() => setEditing(true)} disabled={loading}>edit</button>
-                <button style={s.btn('#718096')} onClick={() => setShowGenDetail(true)} disabled={loading}>詳細</button>
+                <button style={s.btn('#718096')} onClick={() => setShowGenDetail(true)} disabled={loading}>details</button>
                 <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>discard</button>
               </div>
 
