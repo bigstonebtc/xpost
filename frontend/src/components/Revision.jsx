@@ -14,6 +14,7 @@ const s = {
   btn: (color) => ({ padding: '8px 18px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', background: color, color: '#fff' }),
   btnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
   resultTitle: { fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' },
+  costInfo: { fontSize: '12px', color: '#888', marginBottom: '8px' },
   error: { fontSize: '14px', color: '#e53e3e', marginBottom: '16px' },
   empty: { color: '#999', textAlign: 'center', marginTop: '40px' },
 }
@@ -25,6 +26,7 @@ export default function Revision() {
   const [promptId, setPromptId] = useState('')
   const [rewriting, setRewriting] = useState(false)
   const [result, setResult] = useState(null)
+  const [costInfo, setCostInfo] = useState(null)
   const [error, setError] = useState(null)
   const [adding, setAdding] = useState(false)
 
@@ -58,9 +60,11 @@ export default function Revision() {
     setRewriting(true)
     setError(null)
     setResult(null)
+    setCostInfo(null)
     try {
       const res = await api.rewrite(text, promptId)
       setResult(res.rewritten)
+      if (res.tokens != null) setCostInfo({ tokens: res.tokens, cost_usd: res.cost_usd })
       localStorage.setItem(STORAGE_KEY, promptId)
     } catch (e) {
       setError(e.message)
@@ -76,6 +80,7 @@ export default function Revision() {
       await api.addToQueue(result)
       setText('')
       setResult(null)
+      setCostInfo(null)
       setError(null)
     } catch (e) {
       setError(e.message)
@@ -126,6 +131,9 @@ export default function Revision() {
       {result != null && (
         <div style={s.card}>
           <div style={s.resultTitle}>リライト後ツイート（編集可能）</div>
+          {costInfo && (
+            <div style={s.costInfo}>{costInfo.tokens.toLocaleString('en-US')} token ($ {costInfo.cost_usd.toFixed(2)})</div>
+          )}
           <textarea
             style={s.textarea}
             value={result}

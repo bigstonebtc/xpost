@@ -281,7 +281,7 @@ def generate_tweet_from_news(
     return tweet[:max_chars]
 
 
-def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> str:
+def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> dict:
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
 
@@ -306,4 +306,4 @@ def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> st
         ),
     })
 
-    return _call_claude_once(user_id, api_key, system_prompt, user_content, operation_type="revision")["text"]
+    return _call_claude_once(user_id, api_key, system_prompt, user_content, operation_type="revision")
