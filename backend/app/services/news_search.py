@@ -6,7 +6,7 @@ import anthropic
 
 from app.logger import get_logger
 from app.paths import prompts_dir
-from app.services.claude_usage import log_claude_usage
+from app.services.claude_usage import estimate_cost, log_claude_usage
 from app.services.writer import _load_documents, _parse_prompt_file
 from app.user_registry import get_user_config
 from app.utils.rate_limit import check_and_record
@@ -72,10 +72,12 @@ def search_news_for_tweet(
     )
     elapsed = time.monotonic() - started_at
     log_claude_usage(user_id, "news_search", message.usage.input_tokens, message.usage.output_tokens)
+    total_tokens = message.usage.input_tokens + message.usage.output_tokens
+    cost_usd = estimate_cost(user_id, message.usage.input_tokens, message.usage.output_tokens)
 
     if message.stop_reason == "max_tokens":
         logger.error(f"news-search: max_tokensに到達し最終回答を得られませんでした ({elapsed:.1f}s)")
-        return {"found": False, "reason": "応答が長くなりすぎたため記事を特定できませんでした"}
+        return {"found": False, "reason": "応答が長くなりすぎたため記事を特定できませんでした", "tokens": total_tokens, "cost_usd": cost_usd}
 
     # web_search使用時、Claudeは検索経過の説明文を複数のtextブロックに分けて出力することがあり、
     # 最後のtextブロックが最終回答（JSON）になる。全ブロックを連結すると説明文が
@@ -98,7 +100,7 @@ def search_news_for_tweet(
             result = json.loads(text[start:end + 1])
         except Exception as e:
             logger.error(f"news-search: JSON解析失敗: {e}, raw={raw_text[:500]!r}")
-            return {"found": False, "reason": "記事情報の解析に失敗しました"}
+            return {"found": False, "reason": "記事情報の解析に失敗しました", "tokens": total_tokens, "cost_usd": cost_usd}
 
     if result.get("found"):
         logger.info(
@@ -108,4 +110,6 @@ def search_news_for_tweet(
     else:
         logger.info(f"news-search: not found in {elapsed:.1f}s reason={result.get('reason', '')}")
 
+    result["tokens"] = total_tokens
+    result["cost_usd"] = cost_usd
     return result

@@ -22,6 +22,7 @@ const s = {
   newsMeta: { fontSize: '13px', color: '#555', marginBottom: '2px' },
   newsSummary: { fontSize: '13px', marginTop: '8px', marginBottom: '8px', lineHeight: '1.5' },
   newsErr: { fontSize: '13px', color: '#e53e3e' },
+  newsCost: { fontSize: '12px', color: '#888', marginTop: '6px', marginBottom: '4px' },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
   modal: { background: '#fff', padding: '20px', width: '100%', maxWidth: '420px', borderRadius: '8px' },
   modalTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '14px' },
@@ -354,6 +355,9 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
                   {!newsLoading && newsResult && !newsResult.found && (
                     <>
                       <p style={s.newsErr}>記事が見つかりませんでした{newsResult.reason ? `：${newsResult.reason}` : ''}</p>
+                      {newsResult.tokens != null && (
+                        <div style={s.newsCost}>{newsResult.tokens.toLocaleString('en-US')} token ($ {newsResult.cost_usd.toFixed(2)})</div>
+                      )}
                       <div style={s.btnRow}>
                         <button style={s.btn('#2b6cb0')} onClick={handleNewsRetry}>再取得</button>
                         <button style={s.btn('#718096')} onClick={handleNewsClose}>閉じる</button>
@@ -370,6 +374,9 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
                         URL：<a href={newsResult.url} target="_blank" rel="noreferrer">{newsResult.url}</a>
                       </div>
                       <div style={s.newsSummary}>{newsResult.snippet}</div>
+                      {newsResult.tokens != null && (
+                        <div style={s.newsCost}>{newsResult.tokens.toLocaleString('en-US')} token ($ {newsResult.cost_usd.toFixed(2)})</div>
+                      )}
                       <div style={s.btnRow}>
                         <button style={s.btn('#38a169')} onClick={handleNewsOK} disabled={loading}>OK</button>
                         <button style={s.btn('#2b6cb0')} onClick={handleNewsRetry} disabled={loading}>再取得</button>
