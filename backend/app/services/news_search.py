@@ -25,15 +25,22 @@ _DEFAULT_SYSTEM_PROMPT = (
 )
 
 
+# strict=False: スニペットに含まれる未エスケープの制御文字（改行等）を許容する。
+# Claudeに「検索結果の文言をそのまま使う」よう指示しているため、エスケープ漏れが起きやすい。
+_JSON_DECODER = json.JSONDecoder(strict=False)
+
+
 def _extract_json(text: str):
-    """前後に説明文が付いてしまった場合に備え、配列([...])／オブジェクト({...})の
-    いずれかを抽出して再パースする。"""
-    for open_ch, close_ch in (("[", "]"), ("{", "}")):
-        start, end = text.find(open_ch), text.rfind(close_ch)
-        if start != -1 and end != -1 and end > start:
+    """前後に説明文やコードフェンスが付いてしまった場合に備え、文字列中に現れる
+    '[' / '{' の各位置から実際にJSONデコードを試みる。raw_decodeは正式なパーサなので、
+    単純な文字列の find/rfind と違い、文字列リテラル内の括弧や末尾の余計な文章に
+    惑わされず、妥当なJSON部分だけを正しく切り出せる。"""
+    for i, ch in enumerate(text):
+        if ch in "[{":
             try:
-                return json.loads(text[start:end + 1])
-            except Exception:
+                obj, _ = _JSON_DECODER.raw_decode(text, i)
+                return obj
+            except json.JSONDecodeError:
                 continue
     raise ValueError("JSONブロックが見つかりません")
 
@@ -140,12 +147,12 @@ def search_news_for_tweet(
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(text, strict=False)
     except Exception:
         try:
             parsed = _extract_json(text)
         except Exception as e:
-            logger.error(f"news-search: JSON解析失敗: {e}, raw={raw_text[:500]!r}")
+            logger.error(f"news-search: JSON解析失敗: {e}, raw={raw_text[:2000]!r}")
             return {"found": False, "reason": "記事情報の解析に失敗しました", "tokens": total_tokens, "cost_usd": cost_usd}
 
     result = _normalize_result(parsed)
