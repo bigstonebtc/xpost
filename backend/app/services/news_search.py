@@ -12,15 +12,65 @@ from app.user_registry import get_user_config
 from app.utils.rate_limit import check_and_record
 
 NEWS_SEARCH_PROMPT_FILE = "news_search.prompt"
+MAX_ARTICLES = 5
 
 # prompts/news_search.prompt が存在しない場合のフォールバック
 _DEFAULT_SYSTEM_PROMPT = (
     "あなたはXアカウントの運用担当です。ユーザーから渡されたツイート本文に関連する報道記事を"
-    " web_search ツールで1件探してください。説明文や経過報告は出力しないこと。"
-    ' 見つかった場合は {"found": true, "title": "...", "media": "...", "published_date": "YYYY-MM-DD",'
-    ' "url": "https://...", "snippet": "検索で得たスニペット（30-100字、要約の生成はしない）"} の形式で、'
-    ' 見つからない場合は {"found": false, "reason": "..."} の形式で、JSONのみを出力してください。'
+    " web_search ツールで探し、ツイートとの適合度を1〜5で評価してください。説明文や経過報告は出力しないこと。"
+    " 評価4以上の記事を最大5件まで、JSON配列で返してください"
+    ' （例: [{"title": "...", "media": "...", "published_date": "YYYY-MM-DD",'
+    ' "url": "https://...", "snippet": "検索で得たスニペット（30-100字、要約の生成はしない）", "rating": 5}]）。'
+    ' 1件も見つからない場合は {"found": false, "reason": "..."} の形式で、JSONのみを出力してください。'
 )
+
+
+def _extract_json(text: str):
+    """前後に説明文が付いてしまった場合に備え、配列([...])／オブジェクト({...})の
+    いずれかを抽出して再パースする。"""
+    for open_ch, close_ch in (("[", "]"), ("{", "}")):
+        start, end = text.find(open_ch), text.rfind(close_ch)
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except Exception:
+                continue
+    raise ValueError("JSONブロックが見つかりません")
+
+
+def _normalize_result(parsed) -> dict:
+    """Claudeの応答（配列 or 単一オブジェクト）を {"found": bool, "articles": [...]}
+    または {"found": False, "reason": ...} の形に正規化する。"""
+    if isinstance(parsed, dict) and parsed.get("found") is False:
+        return {"found": False, "reason": parsed.get("reason", "")}
+
+    if isinstance(parsed, list):
+        items = parsed
+    elif isinstance(parsed, dict):
+        items = [parsed]
+    else:
+        items = []
+
+    articles = []
+    for item in items:
+        if not isinstance(item, dict) or not item.get("url"):
+            continue
+        articles.append({
+            "title": item.get("title", ""),
+            "media": item.get("media", ""),
+            "published_date": item.get("published_date", ""),
+            "url": item.get("url", ""),
+            "snippet": item.get("snippet", ""),
+            "rating": item.get("rating"),
+        })
+
+    # プロンプト側で評価・日付順に整列されている想定だが、念のためここでも保証する
+    articles.sort(key=lambda a: (a.get("rating") or 0, a.get("published_date") or ""), reverse=True)
+    articles = articles[:MAX_ARTICLES]
+
+    if not articles:
+        return {"found": False, "reason": "条件を満たす記事が見つかりませんでした"}
+    return {"found": True, "articles": articles}
 
 
 def _load_system_prompt(user_id: str) -> str:
@@ -90,23 +140,19 @@ def search_news_for_tweet(
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
     try:
-        result = json.loads(text)
+        parsed = json.loads(text)
     except Exception:
-        # 前後に説明文が付いてしまった場合に備え、最初の{から最後の}までを抽出して再試行
-        start, end = text.find("{"), text.rfind("}")
         try:
-            if start == -1 or end == -1 or end <= start:
-                raise ValueError("JSONブロックが見つかりません")
-            result = json.loads(text[start:end + 1])
+            parsed = _extract_json(text)
         except Exception as e:
             logger.error(f"news-search: JSON解析失敗: {e}, raw={raw_text[:500]!r}")
             return {"found": False, "reason": "記事情報の解析に失敗しました", "tokens": total_tokens, "cost_usd": cost_usd}
 
-    if result.get("found"):
-        logger.info(
-            f"news-search: found rating={result.get('comment_rating')} "
-            f"media={result.get('media')} in {elapsed:.1f}s"
-        )
+    result = _normalize_result(parsed)
+
+    if result["found"]:
+        ratings = ", ".join(str(a.get("rating")) for a in result["articles"])
+        logger.info(f"news-search: found {len(result['articles'])}件 ratings=[{ratings}] in {elapsed:.1f}s")
     else:
         logger.info(f"news-search: not found in {elapsed:.1f}s reason={result.get('reason', '')}")
 

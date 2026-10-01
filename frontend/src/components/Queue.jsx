@@ -23,6 +23,16 @@ const s = {
   newsSummary: { fontSize: '13px', marginTop: '8px', marginBottom: '8px', lineHeight: '1.5' },
   newsErr: { fontSize: '13px', color: '#e53e3e' },
   newsCost: { fontSize: '12px', color: '#888', marginTop: '6px', marginBottom: '4px' },
+  newsArticle: (selected) => ({
+    display: 'block',
+    padding: '10px',
+    marginBottom: '8px',
+    border: selected ? '2px solid #38a169' : '1px solid #e0e0e0',
+    borderRadius: '6px',
+    background: selected ? '#f0fdf4' : '#fff',
+    cursor: 'pointer',
+  }),
+  newsArticleHeader: { display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
   modal: { background: '#fff', padding: '20px', width: '100%', maxWidth: '420px', borderRadius: '8px' },
   modalTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '14px' },
@@ -51,6 +61,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [newsResult, setNewsResult] = useState(null)
   const [newsPattern, setNewsPattern] = useState(0)
   const [newsExcludeUrls, setNewsExcludeUrls] = useState([])
+  const [selectedArticleUrl, setSelectedArticleUrl] = useState(null)
   const [showDetail, setShowDetail] = useState(false)
   const [showGenDetail, setShowGenDetail] = useState(false)
   const genDetailMouseDownOnOverlay = useRef(false)
@@ -175,9 +186,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const runNewsSearch = async (pattern, excludeUrls) => {
     setNewsLoading(true)
     setNewsResult(null)
+    setSelectedArticleUrl(null)
     try {
       const res = await api.searchNews(tweet.id, pattern, excludeUrls)
       setNewsResult(res)
+      if (res.found && res.articles?.length > 0) {
+        setSelectedArticleUrl(res.articles[0].url)
+      }
     } catch (e) {
       setNewsResult({ found: false, reason: e.message })
     } finally {
@@ -194,22 +209,22 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
   const handleNewsRetry = () => {
     const nextPattern = (newsPattern + 1) % 6
-    const nextExclude = newsResult?.found && newsResult.url
-      ? [...newsExcludeUrls, newsResult.url]
-      : newsExcludeUrls
+    const shownUrls = newsResult?.found ? newsResult.articles.map(a => a.url).filter(Boolean) : []
+    const nextExclude = [...newsExcludeUrls, ...shownUrls]
     setNewsPattern(nextPattern)
     setNewsExcludeUrls(nextExclude)
     runNewsSearch(nextPattern, nextExclude)
   }
 
   const handleNewsOK = async () => {
-    if (!newsResult?.url) return
+    if (!selectedArticleUrl) return
     setLoading(true)
     try {
-      const updated = await api.attachNews(tweet.id, newsResult.url)
+      const updated = await api.attachNews(tweet.id, selectedArticleUrl)
       onUpdateContent(tweet.id, updated.content)
       setNewsPanelOpen(false)
       setNewsResult(null)
+      setSelectedArticleUrl(null)
     } catch (e) {
       alert(e.message)
     } finally {
@@ -220,6 +235,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const handleNewsClose = () => {
     setNewsPanelOpen(false)
     setNewsResult(null)
+    setSelectedArticleUrl(null)
   }
 
   const handleNewsDelete = async () => {
@@ -367,18 +383,34 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
                   {!newsLoading && newsResult && newsResult.found && (
                     <>
-                      <div style={s.newsTitle}>{newsResult.title}</div>
-                      <div style={s.newsMeta}>媒体：{newsResult.media}</div>
-                      <div style={s.newsMeta}>発行日：{newsResult.published_date}{isRecent(newsResult.published_date) ? ' ✅ 直近' : ''}</div>
-                      <div style={s.newsMeta}>
-                        URL：<a href={newsResult.url} target="_blank" rel="noreferrer">{newsResult.url}</a>
-                      </div>
-                      <div style={s.newsSummary}>{newsResult.snippet}</div>
+                      {newsResult.articles.map((a, i) => (
+                        <label
+                          key={a.url || i}
+                          style={s.newsArticle(selectedArticleUrl === a.url)}
+                          onClick={() => setSelectedArticleUrl(a.url)}
+                        >
+                          <div style={s.newsArticleHeader}>
+                            <input
+                              type="radio"
+                              name={`news-article-${tweet.id}`}
+                              checked={selectedArticleUrl === a.url}
+                              onChange={() => setSelectedArticleUrl(a.url)}
+                            />
+                            <span style={s.newsTitle}>{a.title}</span>
+                          </div>
+                          <div style={s.newsMeta}>媒体：{a.media}{a.rating != null ? ` ／ 評価：${a.rating}` : ''}</div>
+                          <div style={s.newsMeta}>発行日：{a.published_date}{isRecent(a.published_date) ? ' ✅ 直近' : ''}</div>
+                          <div style={s.newsMeta}>
+                            URL：<a href={a.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>{a.url}</a>
+                          </div>
+                          <div style={s.newsSummary}>{a.snippet}</div>
+                        </label>
+                      ))}
                       {newsResult.tokens != null && (
                         <div style={s.newsCost}>{newsResult.tokens.toLocaleString('en-US')} token ($ {newsResult.cost_usd.toFixed(2)})</div>
                       )}
                       <div style={s.btnRow}>
-                        <button style={s.btn('#38a169')} onClick={handleNewsOK} disabled={loading}>OK</button>
+                        <button style={s.btn('#38a169')} onClick={handleNewsOK} disabled={loading || !selectedArticleUrl}>OK</button>
                         <button style={s.btn('#2b6cb0')} onClick={handleNewsRetry} disabled={loading}>再取得</button>
                         <button style={s.btn('#718096')} onClick={handleNewsClose} disabled={loading}>閉じる</button>
                       </div>
