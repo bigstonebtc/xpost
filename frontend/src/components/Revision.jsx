@@ -78,7 +78,6 @@ export default function Revision() {
     setAdding(true)
     try {
       await api.addToQueue(result)
-      setText('')
       setResult(null)
       setCostInfo(null)
       setError(null)
