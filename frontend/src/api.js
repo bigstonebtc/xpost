@@ -29,6 +29,7 @@ async function request(method, path, body) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || 'エラーが発生しました')
   }
+  if (res.status === 204) return undefined
   return res.json()
 }
 
@@ -123,4 +124,10 @@ export const api = {
   getClaudePricing: () => request('GET', '/claude/pricing'),
   updateClaudePricing: (claude_input_tokens_price, claude_output_tokens_price) =>
     request('PUT', '/claude/pricing', { claude_input_tokens_price, claude_output_tokens_price }),
+  // 正拳突き（固定文面）
+  listFixedTweets: () => request('GET', '/fixed-tweets/'),
+  createFixedTweet: (content) => request('POST', '/fixed-tweets/', { content }),
+  updateFixedTweet: (id, content) => request('PUT', `/fixed-tweets/${id}`, { content }),
+  deleteFixedTweet: (id) => request('DELETE', `/fixed-tweets/${id}`),
+  queueFixedTweet: (id) => request('POST', `/fixed-tweets/${id}/queue`),
 }

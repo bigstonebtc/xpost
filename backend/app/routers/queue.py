@@ -132,22 +132,26 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return tweets
 
 
-@router.post("/add", status_code=201)
-def add_tweet(body: TweetAdd, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    if not body.content.strip():
+def _add_content_to_queue(db: Session, content: str) -> Tweet:
+    if not content.strip():
         raise HTTPException(status_code=400, detail="内容を入力してください")
-    if len(body.content) > 1024:
+    if len(content) > 1024:
         raise HTTPException(status_code=400, detail="1024文字を超えています")
 
     queue_count = db.query(Tweet).filter(Tweet.status == TweetStatus.queued).count()
     if queue_count >= 100:
         raise HTTPException(status_code=400, detail="キューが上限（100件）に達しています")
 
-    tweet = Tweet(content=body.content, status=TweetStatus.queued, source_type="manual")
+    tweet = Tweet(content=content, status=TweetStatus.queued, source_type="manual")
     db.add(tweet)
     db.commit()
     db.refresh(tweet)
     return tweet
+
+
+@router.post("/add", status_code=201)
+def add_tweet(body: TweetAdd, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return _add_content_to_queue(db, body.content)
 
 
 @router.post("/{tweet_id}/post")

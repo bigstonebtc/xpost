@@ -18,6 +18,7 @@ from app.routers import features as features_router
 from app.routers import tor as tor_router
 from app.routers import revision as revision_router
 from app.routers import claude_usage as claude_usage_router
+from app.routers import fixed_tweets as fixed_tweets_router
 from app.user_registry import load_all_users, users_config
 
 # モデルを全てインポートしてcreate_allに認識させる
@@ -208,6 +209,7 @@ app.include_router(features_router.router)
 app.include_router(tor_router.router)
 app.include_router(revision_router.router)
 app.include_router(claude_usage_router.router)
+app.include_router(fixed_tweets_router.router)
 
 
 @app.get("/health")
