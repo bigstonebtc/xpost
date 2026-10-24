@@ -40,9 +40,10 @@ def _check_char_limit(tweet: Tweet, db: Session) -> None:
 
 @router.post("/reschedule-all")
 def reschedule_all(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    """今日に予約済みの投稿はそのまま残し、それ以外の予約済み投稿と未スケジュールの
-    投稿をまとめて対象に、予約をいったん解除した状態から空き枠による重み付き
-    ランダムロジックで1件ずつ割り当て直す（スケジュール平準化）。"""
+    """今日に予約済みの投稿はそのまま残し、それ以外の予約済み投稿を対象に、
+    予約をいったん解除した状態から空き枠による重み付きランダムロジックで
+    1件ずつ割り当て直す（スケジュール平準化）。未スケジュール（queued）の
+    投稿は対象に含めない。"""
     from app.services.scheduler import unschedule_tweet
 
     now_jst = datetime.now(JST)
@@ -50,18 +51,17 @@ def reschedule_all(db: Session = Depends(get_db), user: str = Depends(get_curren
     today_start = datetime(today.year, today.month, today.day, tzinfo=JST).astimezone(timezone.utc)
     today_end = today_start + timedelta(days=1)
 
-    scheduled_targets = (
+    tweets = (
         db.query(Tweet)
         .filter(Tweet.status == TweetStatus.scheduled)
         .filter((Tweet.scheduled_at < today_start) | (Tweet.scheduled_at >= today_end))
+        .order_by(Tweet.id.asc())
         .all()
     )
-    queued_targets = db.query(Tweet).filter(Tweet.status == TweetStatus.queued).all()
-    tweets = sorted(scheduled_targets + queued_targets, key=lambda t: t.id)
     if not tweets:
         return {"rescheduled": 0}
 
-    for tweet in scheduled_targets:
+    for tweet in tweets:
         unschedule_tweet(user, tweet.id)
         tweet.status = TweetStatus.queued
         tweet.scheduled_at = None
