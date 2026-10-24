@@ -429,14 +429,14 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 export default function Queue() {
   const [tweets, setTweets] = useState([])
   const [loading, setLoading] = useState(false)
-  const [scheduleHours, setScheduleHours] = useState(null)
+  const [scheduleDays, setScheduleDays] = useState(null)
   const [rescheduling, setRescheduling] = useState(false)
 
   const load = () => api.queue().then(setTweets).catch(e => alert(e.message))
 
   useEffect(() => { load() }, [])
   useEffect(() => {
-    api.getPostingSettings().then(s => setScheduleHours(s.schedule_hours)).catch(() => {})
+    api.getPostingSettings().then(s => setScheduleDays(s.schedule_days)).catch(() => {})
   }, [])
 
   const handleClear = async () => {
@@ -479,8 +479,8 @@ export default function Queue() {
           {unscheduledCount > 0 && <button style={s.clearBtn} onClick={handleClear}>Delete unscheduled</button>}
         </div>
       </div>
-      {scheduleHours != null && (
-        <p style={s.modeInfo}>現在の投稿モード：{scheduleHours}時間内にランダムに投稿</p>
+      {scheduleDays != null && (
+        <p style={s.modeInfo}>現在の投稿モード：明日から{scheduleDays - 1}日間にランダムに投稿</p>
       )}
       {tweets.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>キューが空です</p>}
       {tweets.map(t => <TweetCard key={t.id} tweet={t} onRefresh={load} onUpdateContent={handleUpdateContent} />)}

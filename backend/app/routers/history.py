@@ -8,6 +8,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
+from app.services.scheduling import DEFAULT_SCHEDULE_DAYS, daily_limit_for
 
 router = APIRouter(prefix="/history", tags=["history"])
 
@@ -63,17 +64,19 @@ def stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
     ps = db.query(PostingSettings).first()
     daily_schedule_limit = ps.daily_schedule_limit if ps else 10
+    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
 
     scheduled_q = db.query(Tweet).filter(Tweet.status == TweetStatus.scheduled)
     schedule_forecast = []
-    for i in range(10):
+    for i in range(schedule_days):
+        day = now_jst.date() + timedelta(days=i)
         day_start = today_start + timedelta(days=i)
         day_end = day_start + timedelta(days=1)
         day_count = scheduled_q.filter(Tweet.scheduled_at >= day_start, Tweet.scheduled_at < day_end).count()
         schedule_forecast.append({
-            "date": (now_jst.date() + timedelta(days=i)).isoformat(),
+            "date": day.isoformat(),
             "scheduled_count": day_count,
-            "daily_schedule_limit": daily_schedule_limit,
+            "daily_schedule_limit": daily_limit_for(day, daily_schedule_limit),
         })
 
     next_scheduled = (

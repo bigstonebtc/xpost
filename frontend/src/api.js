@@ -99,7 +99,7 @@ export const api = {
   updatePostingSettings: (daily_schedule_limit) => request('PUT', '/settings/posting/', { daily_schedule_limit }),
   getPostingMode: () => request('GET', '/settings/posting/mode'),
   updatePostingMode: (posting_mode) => request('PUT', '/settings/posting/mode', { posting_mode }),
-  updateScheduleHours: (schedule_hours) => request('PUT', '/settings/posting/schedule-hours', { schedule_hours }),
+  updateScheduleDays: (schedule_days) => request('PUT', '/settings/posting/schedule-days', { schedule_days }),
   updateAllowOver140: (allow_over_140) => request('PUT', '/settings/posting/allow-over-140', { allow_over_140 }),
   // Tor
   torStatus: () => request('GET', '/tor/status'),

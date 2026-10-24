@@ -38,6 +38,20 @@ def _ensure_tweet_topic_type_columns(user_id: str) -> None:
         conn.commit()
 
 
+def _ensure_posting_settings_schedule_days_column(user_id: str) -> None:
+    """予約範囲を「向こう◯時間」(schedule_hours)から「向こうN日」(schedule_days)に
+    移行する（冪等）。schedule_daysが無い場合のみDEFAULT 10で追加し、既存行は
+    一律10日に初期化する（旧schedule_hoursの値は参照しない）。schedule_hours列自体は
+    SQLiteでの列削除を避けるため物理的には残すが、アプリケーションコードからは
+    一切参照しない。"""
+    engine = get_engine(user_id)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(posting_settings)").fetchall()}
+        if "schedule_days" not in cols:
+            conn.exec_driver_sql("ALTER TABLE posting_settings ADD COLUMN schedule_days INTEGER NOT NULL DEFAULT 10")
+        conn.commit()
+
+
 def _recover_scheduled_tweets(user_id: str) -> None:
     from app.models.tweet import Tweet, TweetStatus
     from app.services.scheduler import schedule_tweet
@@ -150,6 +164,7 @@ def _init_user(user_id: str) -> None:
     engine = get_engine(user_id)
     Base.metadata.create_all(bind=engine)
     _ensure_tweet_topic_type_columns(user_id)
+    _ensure_posting_settings_schedule_days_column(user_id)
 
     _seed_news_data(user_id)
     _ensure_news_sources_v2(user_id)
