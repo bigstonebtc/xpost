@@ -20,7 +20,7 @@ X account management web application. 複数ユーザーで利用できる共有
 
 ```bash
 sudo ./scripts/setup_user.sh <username> <password>
-sudo docker compose restart backend   # 新規ユーザーを認識させるため再起動が必要
+sudo docker compose -p xpost_prod restart backend   # 新規ユーザーを認識させるため再起動が必要
 ```
 
 初回のみ `/home/<user>/xpost/conf/env.conf`（`env.conf.example` からコピーされる）に

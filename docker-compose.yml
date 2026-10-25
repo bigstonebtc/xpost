@@ -37,4 +37,6 @@ services:
       - backend
       - frontend
     volumes:
-      - ./nginx/certs:/etc/nginx/certs:ro
+      # 証明書はリポジトリ外（ホストの /etc/xpost/ssl/）に置く。
+      # xpost.crt / xpost.key（自己署名、CN/SAN=サーバーIP）を想定。
+      - /etc/xpost/ssl:/etc/nginx/certs:ro
