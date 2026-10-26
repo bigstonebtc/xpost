@@ -29,6 +29,7 @@ async function request(method, path, body) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || 'エラーが発生しました')
   }
+  if (res.status === 204) return undefined
   return res.json()
 }
 
@@ -45,6 +46,7 @@ export const api = {
   features: () => request('GET', '/features/'),
   queue: () => request('GET', '/queue/'),
   generate: () => request('POST', '/tweets/generate'),
+  addToQueue: (content) => request('POST', '/queue/add', { content }),
   post: (id) => request('POST', `/queue/${id}/post`),
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
@@ -97,7 +99,7 @@ export const api = {
   updatePostingSettings: (daily_schedule_limit) => request('PUT', '/settings/posting/', { daily_schedule_limit }),
   getPostingMode: () => request('GET', '/settings/posting/mode'),
   updatePostingMode: (posting_mode) => request('PUT', '/settings/posting/mode', { posting_mode }),
-  updateScheduleHours: (schedule_hours) => request('PUT', '/settings/posting/schedule-hours', { schedule_hours }),
+  updateScheduleDays: (schedule_days) => request('PUT', '/settings/posting/schedule-days', { schedule_days }),
   updateAllowOver140: (allow_over_140) => request('PUT', '/settings/posting/allow-over-140', { allow_over_140 }),
   // Tor
   torStatus: () => request('GET', '/tor/status'),
@@ -114,5 +116,39 @@ export const api = {
   updatePrompt: (filename, body) => request('PUT', `/prompts/${filename}`, body),
   deletePrompt: (filename) => request('DELETE', `/prompts/${filename}`),
   listDocuments: () => request('GET', '/prompts/documents/list'),
+  downloadPromptBackup: () =>
+    fetch(`${BASE}/prompts/backup`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || 'バックアップの取得に失敗しました')
+      }
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : 'promptbackup.zip'
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }),
   generateWithPrompt: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
+  // リライト
+  rewrite: (text, prompt_id) => request('POST', '/revision/rewrite', { text, prompt_id }),
+  // Claude API 利用統計・料金設定
+  claudeStats: () => request('GET', '/claude/stats'),
+  getClaudePricing: () => request('GET', '/claude/pricing'),
+  updateClaudePricing: (claude_input_tokens_price, claude_output_tokens_price) =>
+    request('PUT', '/claude/pricing', { claude_input_tokens_price, claude_output_tokens_price }),
+  // 正拳突き（固定文面）
+  listFixedTweets: () => request('GET', '/fixed-tweets/'),
+  createFixedTweet: (content) => request('POST', '/fixed-tweets/', { content }),
+  updateFixedTweet: (id, content) => request('PUT', `/fixed-tweets/${id}`, { content }),
+  deleteFixedTweet: (id) => request('DELETE', `/fixed-tweets/${id}`),
+  queueFixedTweet: (id) => request('POST', `/fixed-tweets/${id}/queue`),
 }

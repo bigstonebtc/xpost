@@ -7,19 +7,17 @@ from app.dependencies import get_current_user
 from app.logger import get_logger
 from app.models.posting import PostingSettings
 from app.services import posting_mode
+from app.services.scheduling import SCHEDULE_DAYS_MAX, SCHEDULE_DAYS_MIN
 
 router = APIRouter(prefix="/settings/posting", tags=["posting"])
-
-SCHEDULE_HOURS_MIN = 24
-SCHEDULE_HOURS_MAX = 720
 
 
 class PostingSettingsUpdate(BaseModel):
     daily_schedule_limit: int
 
 
-class ScheduleHoursUpdate(BaseModel):
-    schedule_hours: int
+class ScheduleDaysUpdate(BaseModel):
+    schedule_days: int
 
 
 class AllowOver140Update(BaseModel):
@@ -35,7 +33,7 @@ def get_posting_settings(db: Session = Depends(get_db), user: str = Depends(get_
     ps = db.query(PostingSettings).first()
     return {
         "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
-        "schedule_hours": ps.schedule_hours if ps else 120,
+        "schedule_days": ps.schedule_days if ps else 10,
         "allow_over_140": ps.allow_over_140 if ps else True,
         "posting_mode": posting_mode.get_mode(user),
         "default_mode": posting_mode.get_default_mode(user),
@@ -55,14 +53,14 @@ def update_posting_settings(body: PostingSettingsUpdate, db: Session = Depends(g
     return {"ok": True}
 
 
-@router.put("/schedule-hours")
-def update_schedule_hours(body: ScheduleHoursUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    if not (SCHEDULE_HOURS_MIN <= body.schedule_hours <= SCHEDULE_HOURS_MAX):
-        raise HTTPException(status_code=400, detail=f"schedule_hours は{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}の整数で指定してください")
+@router.put("/schedule-days")
+def update_schedule_days(body: ScheduleDaysUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    if not (SCHEDULE_DAYS_MIN <= body.schedule_days <= SCHEDULE_DAYS_MAX):
+        raise HTTPException(status_code=400, detail=f"schedule_days は{SCHEDULE_DAYS_MIN}〜{SCHEDULE_DAYS_MAX}の整数で指定してください")
     ps = db.query(PostingSettings).first()
     if not ps:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
-    ps.schedule_hours = body.schedule_hours
+    ps.schedule_days = body.schedule_days
     db.commit()
     return {"ok": True}
 

@@ -13,7 +13,7 @@
 #   7. 初期パスワードを表示
 #
 # 実行後は backend の再起動が必要（新規ユーザーをconfigキャッシュに反映するため）:
-#   docker compose restart backend
+#   docker compose -p xpost_prod restart backend
 
 set -euo pipefail
 
@@ -89,4 +89,4 @@ echo "Initial password: $PASSWORD"
 echo "─────────────────────────────────"
 echo ""
 echo "新規ユーザーを認識させるには backend の再起動が必要です:"
-echo "  docker compose restart backend"
+echo "  docker compose -p xpost_prod restart backend"

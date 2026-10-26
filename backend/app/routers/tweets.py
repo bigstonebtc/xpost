@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, session_for
 from app.models.tweet import Tweet, TweetStatus
+from app.services.claude_usage import estimate_cost
 from app.services.writer import generate_tweets
 from app.services.news_search import search_news_for_tweet
 from app.dependencies import get_current_user
@@ -40,12 +41,29 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
     )
     history = [t.content for t in posted_tweets]
 
-    new_tweets = generate_tweets(user, history, prompt_file=body.prompt_file)
-    for content in new_tweets:
-        db.add(Tweet(content=content, status=TweetStatus.queued))
-    db.commit()
+    result = generate_tweets(user, history, prompt_file=body.prompt_file)
 
-    return {"generated": len(new_tweets)}
+    # Claude APIの並列呼び出しに10〜20秒程度かかるため、クライアントの画面遷移等で
+    # リクエストが途中で打ち切られた場合に備え、保存だけはリクエストスコープの
+    # dbセッション（打ち切り時に閉じられる可能性がある）とは独立したセッションで行い、
+    # 生成結果が確実にキューへ保存されるようにする。
+    write_db = session_for(user)
+    try:
+        for item in result["tweets"]:
+            write_db.add(Tweet(
+                content=item["content"],
+                status=TweetStatus.queued,
+                used_topic=item.get("topic"),
+                used_type=item.get("type"),
+            ))
+        write_db.commit()
+    finally:
+        write_db.close()
+
+    total_tokens = result["input_tokens"] + result["output_tokens"]
+    cost_usd = estimate_cost(user, result["input_tokens"], result["output_tokens"])
+
+    return {"generated": len(result["tweets"]), "tokens": total_tokens, "cost_usd": cost_usd}
 
 
 class NewsSearchRequest(BaseModel):

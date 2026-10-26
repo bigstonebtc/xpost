@@ -1,4 +1,3 @@
-import random
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,6 +15,7 @@ from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.services.poster import post_tweet_with_retry
 from app.services.scheduler import schedule_tweet
+from app.services.scheduling import DEFAULT_SCHEDULE_DAYS, schedule_one
 from app.utils.rate_limit import RateLimitExceeded, format_message
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -27,6 +27,10 @@ class TweetUpdate(BaseModel):
     content: str
 
 
+class TweetAdd(BaseModel):
+    content: str
+
+
 def _check_char_limit(tweet: Tweet, db: Session) -> None:
     ps = db.query(PostingSettings).first()
     allow_over_140 = ps.allow_over_140 if ps else True
@@ -34,55 +38,26 @@ def _check_char_limit(tweet: Tweet, db: Session) -> None:
         raise HTTPException(status_code=400, detail="140文字を超えています")
 
 
-def _find_available_datetime(base_dt: datetime, daily_limit: int, db: Session) -> datetime:
-    """daily_limit 未満のスケジュール件数になる日を探して base_dt の時刻で返す"""
-    candidate = base_dt
-    while True:
-        day_jst = candidate.astimezone(JST).date()
-        day_start = datetime(day_jst.year, day_jst.month, day_jst.day, tzinfo=JST).astimezone(timezone.utc)
-        day_end = day_start + timedelta(days=1)
-        count = db.query(Tweet).filter(
-            Tweet.status == TweetStatus.scheduled,
-            Tweet.scheduled_at >= day_start,
-            Tweet.scheduled_at < day_end,
-        ).count()
-        if count < daily_limit:
-            return candidate
-        candidate += timedelta(days=1)
-
-
-def _random_daytime_schedule(hours: int = 24) -> datetime:
-    """指定時間内でJST日中（7:00〜21:00）のランダムな時刻を返す。
-    指定時間が短く窓内に日中枠が無い場合（例: 夜間に1時間指定）は、
-    日中制約を優先し、直近の日中枠（翌日以降）まで探す。"""
-    now_jst = datetime.now(JST)
-    end_window = now_jst + timedelta(hours=hours)
-    slots = []
-    t = now_jst.replace(second=0, microsecond=0) + timedelta(minutes=1)
-    while t <= end_window:
-        if 7 <= t.hour < 21:
-            slots.append(t)
-        t += timedelta(minutes=1)
-
-    if not slots:
-        while not (7 <= t.hour < 21):
-            t += timedelta(minutes=1)
-        end_of_day = t.replace(hour=21, minute=0, second=0, microsecond=0)
-        while t <= end_of_day:
-            if 7 <= t.hour < 21:
-                slots.append(t)
-            t += timedelta(minutes=1)
-
-    return random.choice(slots).astimezone(timezone.utc)
-
-
 @router.post("/reschedule-all")
 def reschedule_all(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    """スケジュール済みの全ツイートを一旦解除し、現在の投稿タイミング設定で
-    改めてランダムにスケジュールし直す。"""
+    """今日に予約済みの投稿はそのまま残し、それ以外の予約済み投稿を対象に、
+    予約をいったん解除した状態から空き枠による重み付きランダムロジックで
+    1件ずつ割り当て直す（スケジュール平準化）。未スケジュール（queued）の
+    投稿は対象に含めない。"""
     from app.services.scheduler import unschedule_tweet
 
-    tweets = db.query(Tweet).filter(Tweet.status == TweetStatus.scheduled).order_by(Tweet.id.asc()).all()
+    now_jst = datetime.now(JST)
+    today = now_jst.date()
+    today_start = datetime(today.year, today.month, today.day, tzinfo=JST).astimezone(timezone.utc)
+    today_end = today_start + timedelta(days=1)
+
+    tweets = (
+        db.query(Tweet)
+        .filter(Tweet.status == TweetStatus.scheduled)
+        .filter((Tweet.scheduled_at < today_start) | (Tweet.scheduled_at >= today_end))
+        .order_by(Tweet.id.asc())
+        .all()
+    )
     if not tweets:
         return {"rescheduled": 0}
 
@@ -93,19 +68,23 @@ def reschedule_all(db: Session = Depends(get_db), user: str = Depends(get_curren
     db.commit()
 
     ps = db.query(PostingSettings).first()
-    schedule_hours = ps.schedule_hours if ps else 24
+    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
     daily_limit = ps.daily_schedule_limit if ps else 10
 
+    rescheduled = 0
     for tweet in tweets:
-        base_dt = _random_daytime_schedule(schedule_hours)
-        scheduled_at = _find_available_datetime(base_dt, daily_limit, db)
+        scheduled_at = schedule_one(schedule_days, daily_limit, db)
+        if scheduled_at is None:
+            # これ以上空き枠がない。以降の投稿も結果は同じなので打ち切り、未スケジュールのまま残す
+            break
         tweet.status = TweetStatus.scheduled
         tweet.scheduled_at = scheduled_at
         db.commit()
         schedule_tweet(user, tweet.id, scheduled_at)
+        rescheduled += 1
 
-    get_logger(user, "posting").info(f"reschedule_all: {len(tweets)}件を再スケジュールしました")
-    return {"rescheduled": len(tweets)}
+    get_logger(user, "posting").info(f"reschedule_all: {rescheduled}/{len(tweets)}件を再スケジュールしました")
+    return {"rescheduled": rescheduled}
 
 
 @router.get("/")
@@ -121,11 +100,33 @@ def list_queue(db: Session = Depends(get_db), _=Depends(get_current_user)):
                 else_=2,
             ),
             nulls_last(asc(Tweet.scheduled_at)),
-            Tweet.id.asc()
+            Tweet.id.desc()
         )
         .all()
     )
     return tweets
+
+
+def _add_content_to_queue(db: Session, content: str) -> Tweet:
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="内容を入力してください")
+    if len(content) > 1024:
+        raise HTTPException(status_code=400, detail="1024文字を超えています")
+
+    queue_count = db.query(Tweet).filter(Tweet.status == TweetStatus.queued).count()
+    if queue_count >= 100:
+        raise HTTPException(status_code=400, detail="キューが上限（100件）に達しています")
+
+    tweet = Tweet(content=content, status=TweetStatus.queued, source_type="manual")
+    db.add(tweet)
+    db.commit()
+    db.refresh(tweet)
+    return tweet
+
+
+@router.post("/add", status_code=201)
+def add_tweet(body: TweetAdd, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return _add_content_to_queue(db, body.content)
 
 
 @router.post("/{tweet_id}/post")
@@ -210,11 +211,12 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str 
     _check_char_limit(tweet, db)
 
     ps = db.query(PostingSettings).first()
-    schedule_hours = ps.schedule_hours if ps else 24
-    base_dt = _random_daytime_schedule(schedule_hours)
-
+    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
     daily_limit = ps.daily_schedule_limit if ps else 10
-    scheduled_at = _find_available_datetime(base_dt, daily_limit, db)
+
+    scheduled_at = schedule_one(schedule_days, daily_limit, db)
+    if scheduled_at is None:
+        raise HTTPException(status_code=400, detail="予約範囲内に空き枠がありません")
 
     tweet.status = TweetStatus.scheduled
     tweet.scheduled_at = scheduled_at

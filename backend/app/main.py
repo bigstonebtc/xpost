@@ -16,10 +16,40 @@ from app.routers import posting as posting_router
 from app.routers import rate_limit as rate_limit_router
 from app.routers import features as features_router
 from app.routers import tor as tor_router
+from app.routers import revision as revision_router
+from app.routers import claude_usage as claude_usage_router
+from app.routers import fixed_tweets as fixed_tweets_router
 from app.user_registry import load_all_users, users_config
 
 # モデルを全てインポートしてcreate_allに認識させる
 import app.models  # noqa: F401
+
+
+def _ensure_tweet_topic_type_columns(user_id: str) -> None:
+    """generate_tweetsで使用したtopic/typeを記録するカラムを追加する（冪等）。
+    create_allは既存テーブルへの列追加を行わないため、手動でALTER TABLEする。"""
+    engine = get_engine(user_id)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(tweets)").fetchall()}
+        if "used_topic" not in cols:
+            conn.exec_driver_sql("ALTER TABLE tweets ADD COLUMN used_topic TEXT")
+        if "used_type" not in cols:
+            conn.exec_driver_sql("ALTER TABLE tweets ADD COLUMN used_type TEXT")
+        conn.commit()
+
+
+def _ensure_posting_settings_schedule_days_column(user_id: str) -> None:
+    """予約範囲を「向こう◯時間」(schedule_hours)から「向こうN日」(schedule_days)に
+    移行する（冪等）。schedule_daysが無い場合のみDEFAULT 10で追加し、既存行は
+    一律10日に初期化する（旧schedule_hoursの値は参照しない）。schedule_hours列自体は
+    SQLiteでの列削除を避けるため物理的には残すが、アプリケーションコードからは
+    一切参照しない。"""
+    engine = get_engine(user_id)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(posting_settings)").fetchall()}
+        if "schedule_days" not in cols:
+            conn.exec_driver_sql("ALTER TABLE posting_settings ADD COLUMN schedule_days INTEGER NOT NULL DEFAULT 10")
+        conn.commit()
 
 
 def _recover_scheduled_tweets(user_id: str) -> None:
@@ -133,6 +163,8 @@ def _init_user(user_id: str) -> None:
     cfg = users_config[user_id]
     engine = get_engine(user_id)
     Base.metadata.create_all(bind=engine)
+    _ensure_tweet_topic_type_columns(user_id)
+    _ensure_posting_settings_schedule_days_column(user_id)
 
     _seed_news_data(user_id)
     _ensure_news_sources_v2(user_id)
@@ -169,8 +201,6 @@ app.add_middleware(
     allow_origins=[
         "http://localhost",
         "http://localhost:3000",
-        "http://160.251.142.37",
-        "https://160.251.142.37",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -190,6 +220,9 @@ app.include_router(posting_router.router)
 app.include_router(rate_limit_router.router)
 app.include_router(features_router.router)
 app.include_router(tor_router.router)
+app.include_router(revision_router.router)
+app.include_router(claude_usage_router.router)
+app.include_router(fixed_tweets_router.router)
 
 
 @app.get("/health")
