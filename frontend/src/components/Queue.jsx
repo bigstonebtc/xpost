@@ -144,10 +144,22 @@ function ReviewPromptSelector({ reviewPrompt, onChange }) {
   )
 }
 
-function TweetCard({ tweet, onRefresh, onUpdateContent }) {
+// 処理中に文言を切り替えても幅が変わらないボタンラベル。両方の文言を同じセルに重ね、
+// 見えない方も幅を確保するので、切り替えでボタン幅や行の折り返しが変わらない（画面がずれない）
+function StableLabel({ label, busyLabel, busy }) {
+  return (
+    <span style={{ display: 'inline-grid' }}>
+      <span style={{ gridArea: '1 / 1', visibility: busy ? 'hidden' : 'visible' }}>{label}</span>
+      <span style={{ gridArea: '1 / 1', visibility: busy ? 'visible' : 'hidden' }}>{busyLabel}</span>
+    </span>
+  )
+}
+
+function TweetCard({ tweet, reviewActive, onRefresh, onUpdateContent }) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(tweet.content)
   const [loading, setLoading] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
   const [imagePreviewUrl, setImagePreviewUrl] = useState(() => {
     if (!tweet.image_path) return null
     const filename = tweet.image_path.split('/').pop()
@@ -205,9 +217,10 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
 
   const handleSchedule = async () => {
     setLoading(true)
+    setScheduling(true)
     try { await api.schedule(tweet.id); onRefresh() }
     catch (e) { alert(e.message) }
-    finally { setLoading(false) }
+    finally { setLoading(false); setScheduling(false) }
   }
 
   const handleUnschedule = async () => {
@@ -429,7 +442,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
           ) : (
             <>
               <div style={s.btnRow}>
-                <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
+                <button
+                  style={{ ...s.btn('#38a169'), cursor: scheduling ? 'progress' : 'pointer' }}
+                  onClick={handleSchedule}
+                  disabled={loading}
+                >
+                  <StableLabel label="Schedule" busyLabel={reviewActive ? 'レビュー中…' : '予約中…'} busy={scheduling} />
+                </button>
                 <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
                 {imagePreviewUrl ? (
                   <>
@@ -579,7 +598,7 @@ export default function Queue() {
         </div>
       )}
       {tweets.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>キューが空です</p>}
-      {tweets.map(t => <TweetCard key={t.id} tweet={t} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
+      {tweets.map(t => <TweetCard key={t.id} tweet={t} reviewActive={!!reviewPrompt} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
     </div>
   )
 }
