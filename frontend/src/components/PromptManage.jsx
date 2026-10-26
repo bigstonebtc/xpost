@@ -110,7 +110,7 @@ function PromptModal({ initial, documents, onSave, onClose, keepOpenOnSave }) {
           ツイート作成画面に表示する
         </label>
 
-        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>入力した内容がそのまま保存されます（#コメント可）。論点リスト・型リストを使う場合は先頭に「topics =」「types =」（1行1項目、インデント）と「[prompt]」を書いてから本文を続けてください</span></label>
+        <label style={s.label}>プロンプト本文 <span style={{ color: '#e53e3e' }}>*</span><span style={s.hint}>入力した内容がそのまま保存されます（#コメント可）。本文の前に必ず「[prompt]」の行を書いてください（無いと保存できません）。論点リスト・型リストを使う場合は「[prompt]」より前に「topics =」「types =」（1行1項目、インデント）を書きます</span></label>
         {topicWarning && <p style={s.warnMsg}>⚠ 本文に {'{topic}'} がありますが、論点リストが空です</p>}
         {typeWarning && <p style={s.warnMsg}>⚠ 本文に {'{type}'} がありますが、型リストが空です</p>}
         <textarea style={s.textarea} value={body} onChange={e => setBody(e.target.value)} spellCheck={false} />

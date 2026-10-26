@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, session_for
 from app.models.tweet import Tweet, TweetStatus
 from app.services.claude_usage import estimate_cost
-from app.services.writer import generate_tweets
+from app.services.writer import PromptError, generate_tweets
 from app.services.news_search import search_news_for_tweet
 from app.dependencies import get_current_user
 from app.utils.rate_limit import RateLimitExceeded, format_message, would_allow
@@ -41,7 +41,10 @@ def generate(body: GenerateRequest = GenerateRequest(), db: Session = Depends(ge
     )
     history = [t.content for t in posted_tweets]
 
-    result = generate_tweets(user, history, prompt_file=body.prompt_file)
+    try:
+        result = generate_tweets(user, history, prompt_file=body.prompt_file)
+    except PromptError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Claude APIの並列呼び出しに10〜20秒程度かかるため、クライアントの画面遷移等で
     # リクエストが途中で打ち切られた場合に備え、保存だけはリクエストスコープの
@@ -93,6 +96,8 @@ def search_news(tweet_id: int, body: NewsSearchRequest, db: Session = Depends(ge
         )
     except RateLimitExceeded as e:
         raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
+    except PromptError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 class NewsAttachRequest(BaseModel):

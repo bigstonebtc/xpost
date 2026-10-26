@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.dependencies import get_current_user
 from app.paths import documents_dir, prompts_dir
+from app.services.writer import _parse_prompt_text
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
@@ -74,6 +75,14 @@ def _write_prompt_file(path: Path, name: str, documents: list[str], visible: boo
     docs_str = ", ".join(documents)
     header = f"name = {name}\ndocuments = {docs_str}\nvisible = {'true' if visible else 'false'}\n"
     path.write_text(header + "\n" + body.strip("\n") + "\n", encoding="utf-8")
+
+
+def _validate_body(body: str):
+    if not body.strip():
+        raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
+    # 生成・リライト・ニュース検索・+Rレビューは [prompt] 以降だけを使い、無い・空ならエラーになるため保存時に弾く
+    if not _parse_prompt_text(body, "")["prompt"]:
+        raise HTTPException(status_code=400, detail="本文の前に [prompt] の行が必要です（[prompt] の後に本文を書いてください）")
 
 
 class PromptCreate(BaseModel):
@@ -155,8 +164,7 @@ def create_prompt(payload: PromptCreate, user: str = Depends(get_current_user)):
     _ensure_dirs(user)
     if not payload.name or len(payload.name) > 50:
         raise HTTPException(status_code=400, detail="プロンプト名は1〜50文字で入力してください")
-    if not payload.body.strip():
-        raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
+    _validate_body(payload.body)
 
     filename = _slugify(payload.name) + ".prompt"
     path = prompts_dir(user) / filename
@@ -173,8 +181,7 @@ def update_prompt(filename: str, payload: PromptUpdate, user: str = Depends(get_
         raise HTTPException(status_code=400, detail="無効なファイル名です")
     if not payload.name or len(payload.name) > 50:
         raise HTTPException(status_code=400, detail="プロンプト名は1〜50文字で入力してください")
-    if not payload.body.strip():
-        raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
+    _validate_body(payload.body)
 
     path = prompts_dir(user) / filename
     if not path.exists():

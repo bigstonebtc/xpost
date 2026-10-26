@@ -5,25 +5,13 @@ from datetime import date
 import anthropic
 
 from app.logger import get_logger
-from app.paths import prompts_dir
 from app.services.claude_usage import estimate_cost, log_claude_usage
-from app.services.writer import _load_documents, _parse_prompt_file
+from app.services.writer import _load_documents, load_prompt
 from app.user_registry import get_user_config
 from app.utils.rate_limit import check_and_record
 
 NEWS_SEARCH_PROMPT_FILE = "news_search.prompt"
 MAX_ARTICLES = 5
-
-# prompts/news_search.prompt が存在しない場合のフォールバック
-_DEFAULT_SYSTEM_PROMPT = (
-    "あなたはXアカウントの運用担当です。ユーザーから渡されたツイート本文に関連する報道記事を"
-    " web_search ツールで探し、ツイートとの適合度を1〜5で評価してください。説明文や経過報告は出力しないこと。"
-    " 評価4以上の記事を最大5件まで、JSON配列で返してください"
-    ' （例: [{"title": "...", "media": "...", "published_date": "YYYY-MM-DD",'
-    ' "url": "https://...", "snippet": "検索で得たスニペット（30-100字、要約の生成はしない）", "rating": 5}]）。'
-    ' 1件も見つからない場合は {"found": false, "reason": "..."} の形式で、JSONのみを出力してください。'
-)
-
 
 # strict=False: スニペットに含まれる未エスケープの制御文字（改行等）を許容する。
 # Claudeに「検索結果の文言をそのまま使う」よう指示しているため、エスケープ漏れが起きやすい。
@@ -81,12 +69,9 @@ def _normalize_result(parsed) -> dict:
 
 
 def _load_system_prompt(user_id: str) -> str:
-    path = prompts_dir(user_id) / NEWS_SEARCH_PROMPT_FILE
-    if not path.exists():
-        return _DEFAULT_SYSTEM_PROMPT
-
-    cfg = _parse_prompt_file(path)
-    system_prompt = cfg["prompt"] or _DEFAULT_SYSTEM_PROMPT
+    # ファイルが無い / [prompt] が無いか空の場合は PromptError（組み込みプロンプトへは切り替えない）
+    cfg = load_prompt(user_id, NEWS_SEARCH_PROMPT_FILE)
+    system_prompt = cfg["prompt"]
     docs = _load_documents(user_id, cfg.get("documents", []))
     if docs:
         system_prompt += "\n\n【参考資料】\n" + docs
@@ -100,6 +85,8 @@ def search_news_for_tweet(
     exclude_urls: list[str] | None = None,
 ) -> dict:
     logger = get_logger(user_id, "generation")
+    # プロンプトが使えない場合は、レート制限の枠を消費する前にエラーにする
+    system_prompt = _load_system_prompt(user_id)
     check_and_record(user_id, "anthropic")
 
     exclude_urls = exclude_urls or []
@@ -123,7 +110,7 @@ def search_news_for_tweet(
     message = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=8192,
-        system=_load_system_prompt(user_id),
+        system=system_prompt,
         tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
         messages=[{"role": "user", "content": user_content}],
     )

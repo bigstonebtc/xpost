@@ -18,15 +18,21 @@ GENERATION_MODEL = "claude-opus-4-7"
 
 _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文字以内のツイートを1件生成してください。JSON配列で返答。例: [\"ツイート本文\"]"
 _FALLBACK_NEWS_PROMPT = "あなたはXアカウントの運用担当です。提供されたニュース記事をもとに140文字以内のツイートを1件生成してください。URLは別途付与するため本文に含めないこと。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
-_FALLBACK_REVISION_PROMPT = "あなたはXアカウントの運用担当です。与えられたツイート文章を、文体や論調を保ったまま推敲・リライトしてください。"
 
 
 _HEADER_KEYS = {"name", "documents", "topics", "types"}
 
 
+class PromptError(Exception):
+    """指定されたプロンプトが使えない（ファイルが無い / [prompt] が無いか空）。
+    汎用プロンプトへ黙って切り替えず、呼び出し元でエラーとして扱う。"""
+
+
 def _parse_prompt_file(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
-    name = path.stem
+    return _parse_prompt_text(path.read_text(encoding="utf-8"), path.stem)
+
+
+def _parse_prompt_text(text: str, name: str) -> dict:
     documents = []
     topics_lines = []
     types_lines = []
@@ -95,6 +101,22 @@ def _load_documents(user_id: str, doc_names: list[str]) -> str:
     return "\n\n---\n\n".join(texts)
 
 
+def load_prompt(user_id: str, prompt_file: str) -> dict:
+    """プロンプトファイルを読み込む。ファイルが無い、または [prompt] が無いか空の場合は
+    PromptError を送出する（汎用プロンプトへのフォールバックはしない）。"""
+    path = prompts_dir(user_id) / prompt_file if prompt_file else None
+    if not path or "/" in prompt_file or "\\" in prompt_file or not path.is_file():
+        message = f"プロンプトファイル {prompt_file or '(未指定)'} が見つかりません"
+        get_logger(user_id).error(message)
+        raise PromptError(message)
+    cfg = _parse_prompt_file(path)
+    if not cfg["prompt"]:
+        message = f"プロンプト「{cfg['name']}」に [prompt] が無いか、[prompt] の後が空です"
+        get_logger(user_id).error(message)
+        raise PromptError(message)
+    return cfg
+
+
 def _resolve_prompt(user_id: str, prompt_file: str | None) -> dict:
     if prompt_file:
         path = prompts_dir(user_id) / prompt_file
@@ -146,11 +168,15 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
 
-    prompt_cfg = _resolve_prompt(user_id, prompt_file)
+    # プロンプト未選択時のみ汎用プロンプトを使う。選択されたプロンプトが使えない場合は PromptError
+    if prompt_file:
+        prompt_cfg = load_prompt(user_id, prompt_file)
+    else:
+        prompt_cfg = {"name": "default", "documents": [], "topics": [], "types": [], "prompt": _FALLBACK_PROMPT}
     logger.info(f"topics loaded: {len(prompt_cfg.get('topics', []))} items from {prompt_file or 'default'}")
 
     source = _load_documents(user_id, prompt_cfg["documents"])
-    prompt_template = prompt_cfg["prompt"] or _FALLBACK_PROMPT
+    prompt_template = prompt_cfg["prompt"]
 
     use_topic = "{topic}" in prompt_template
     use_type = "{type}" in prompt_template
@@ -284,12 +310,12 @@ def generate_tweet_from_news(
     return tweet[:max_chars]
 
 
-def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> dict:
+def rewrite_tweet(user_id: str, text: str, prompt_file: str) -> dict:
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
 
-    prompt_cfg = _resolve_prompt(user_id, prompt_file)
-    system_prompt = prompt_cfg["prompt"] or _FALLBACK_REVISION_PROMPT
+    prompt_cfg = load_prompt(user_id, prompt_file)
+    system_prompt = prompt_cfg["prompt"]
     source = _load_documents(user_id, prompt_cfg["documents"])
 
     user_content = []

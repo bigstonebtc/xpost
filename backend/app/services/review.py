@@ -10,14 +10,12 @@ import anthropic
 
 from app.paths import prompts_dir
 from app.services.claude_usage import log_claude_usage
-from app.services.writer import GENERATION_MODEL, _load_documents, _parse_prompt_file
+from app.services.writer import GENERATION_MODEL, PromptError, _load_documents, _parse_prompt_file, load_prompt
 from app.user_registry import get_user_config
 from app.utils.rate_limit import check_and_record
 
 # nginx の proxy_read_timeout（300s）より十分短くし、タイムアウトをエラーとして返せるようにする
 _REVIEW_TIMEOUT_SECONDS = 120
-
-_HEADER_KEYS = ("name", "documents", "visible", "topics", "types")
 
 # プロンプト内でレビュー前の本文に置き換えるプレースホルダ
 REVIEW_TARGET_PLACEHOLDER = "{review_target}"
@@ -46,37 +44,14 @@ def get_review_prompt(user_id: str, filename: str | None) -> dict | None:
     return {"filename": path.name, "name": name}
 
 
-def _prompt_from_file(path) -> tuple[str, list[str]]:
-    """[prompt] セクションがあればその本文を、無ければ先頭のヘッダー行・# コメントを除いた
-    残り全文をプロンプトにする（管理画面では [prompt] を書かずに本文だけ保存できるため）。
-    # コメントとして除くのは本文が始まる前の行だけ。本文中の「## 出力形式」のような
-    Markdown見出しはそのまま残す。"""
-    parsed = _parse_prompt_file(path)
-    prompt = parsed["prompt"]
-    if not prompt:
-        lines = []
-        in_header = True
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if in_header:
-                stripped = line.strip()
-                key, sep, _ = stripped.partition("=")
-                if not stripped or stripped.startswith("#") or (sep and key.strip() in _HEADER_KEYS):
-                    continue
-                in_header = False
-            lines.append(line)
-        prompt = "\n".join(lines).strip()
-    return prompt, parsed["documents"]
-
-
 def review_tweet(user_id: str, text: str, prompt_file: str) -> dict:
     """レビューを1回実行し、{"text", "input_tokens", "output_tokens"} を返す。
     失敗時は ReviewError（レート制限超過時は RateLimitExceeded）を送出する。"""
-    path = _prompt_path(user_id, prompt_file)
-    if not path:
-        raise ReviewError("レビュー用プロンプトが見つかりません")
-    prompt, documents = _prompt_from_file(path)
-    if not prompt:
-        raise ReviewError("レビュー用プロンプトの本文が空です")
+    try:
+        prompt_cfg = load_prompt(user_id, prompt_file)
+    except PromptError as e:
+        raise ReviewError(str(e)) from e
+    prompt, documents = prompt_cfg["prompt"], prompt_cfg["documents"]
     if REVIEW_TARGET_PLACEHOLDER not in prompt:
         raise ReviewError(f"レビュー用プロンプトに {REVIEW_TARGET_PLACEHOLDER} がありません")
 

@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from app.dependencies import get_current_user
 from app.services.claude_usage import estimate_cost
-from app.services.writer import rewrite_tweet
+from app.services.writer import PromptError, rewrite_tweet
 from app.utils.rate_limit import RateLimitExceeded, format_message
 
 router = APIRouter(prefix="/revision", tags=["revision"])
@@ -23,6 +23,8 @@ def rewrite(body: RewriteRequest, user: str = Depends(get_current_user)):
         result = rewrite_tweet(user, body.text, prompt_file=body.prompt_id)
     except RateLimitExceeded as e:
         raise HTTPException(status_code=429, detail=format_message(e.api_type, e.reset_at))
+    except PromptError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     total_tokens = result["input_tokens"] + result["output_tokens"]
     cost_usd = estimate_cost(user, result["input_tokens"], result["output_tokens"])
