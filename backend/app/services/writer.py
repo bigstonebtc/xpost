@@ -8,12 +8,14 @@ import anthropic
 
 from app.logger import get_logger
 from app.paths import documents_dir, prompts_dir
+from app.services.claude_usage import log_claude_usage
 from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 
 _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文字以内のツイートを1件生成してください。JSON配列で返答。例: [\"ツイート本文\"]"
 _FALLBACK_NEWS_PROMPT = "あなたはXアカウントの運用担当です。提供されたニュース記事をもとに140文字以内のツイートを1件生成してください。URLは別途付与するため本文に含めないこと。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
+_FALLBACK_REVISION_PROMPT = "あなたはXアカウントの運用担当です。与えられたツイート文章を、文体や論調を保ったまま推敲・リライトしてください。"
 
 
 _HEADER_KEYS = {"name", "documents", "topics", "types"}
@@ -108,8 +110,8 @@ def _pick(lst: list, n: int) -> list[str]:
     return pool[:n]
 
 
-def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict]) -> str:
-    """同期で Claude API を1回呼び、ツイート1件を返す。
+def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_content: list[dict], operation_type: str = "generation") -> dict:
+    """同期で Claude API を1回呼び、ツイート1件とトークン使用量を返す。
     スレッドセーフのためクライアントをスレッドごとに生成する。"""
     check_and_record(user_id, "anthropic")
     _client = anthropic.Anthropic(api_key=api_key)
@@ -119,18 +121,24 @@ def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_conte
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],
     )
+    log_claude_usage(user_id, operation_type, message.usage.input_tokens, message.usage.output_tokens)
     text = message.content[0].text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
     try:
         items = json.loads(text)
-        return (items[0] if items else "")[:1024]
+        content = (items[0] if items else "")[:1024]
     except Exception:
         # JSONパース失敗時はテキストをそのまま使う
-        return text[:1024]
+        content = text[:1024]
+    return {
+        "text": content,
+        "input_tokens": message.usage.input_tokens,
+        "output_tokens": message.usage.output_tokens,
+    }
 
 
-def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> list[str]:
+def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | None = None, count: int = 10) -> dict:
     logger = get_logger(user_id, "generation")
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
@@ -163,10 +171,12 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
     def build_call(i: int):
         # str.replace() を使用（str.format() は {topic}/{type} でKeyErrorになるため不可）
         prompt = prompt_template
+        topic = selected_topics[i] if use_topic else None
+        type_ = shuffled_types[i] if use_type else None
         if use_topic:
-            prompt = prompt.replace("{topic}", selected_topics[i])
+            prompt = prompt.replace("{topic}", topic)
         if use_type:
-            prompt = prompt.replace("{type}", shuffled_types[i])
+            prompt = prompt.replace("{type}", type_)
 
         user_content = []
         if source:
@@ -179,16 +189,16 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
             "type": "text",
             "text": past_section + "\n\n" + instruction if past_section else instruction,
         })
-        return prompt, user_content
+        return prompt, user_content, topic, type_
 
     calls = [build_call(i) for i in range(count)]
 
     started_at = time.monotonic()
-    results = [""] * count
+    results = [None] * count
     with ThreadPoolExecutor(max_workers=count) as executor:
         future_to_idx = {
             executor.submit(_call_claude_once, user_id, api_key, p, uc): i
-            for i, (p, uc) in enumerate(calls)
+            for i, (p, uc, _, _) in enumerate(calls)
         }
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
@@ -199,9 +209,21 @@ def generate_tweets(user_id: str, past_tweets: list[str], prompt_file: str | Non
             except Exception as e:
                 logger.error(f"Claude API call failed [{idx}]: {e}")
 
-    generated = [t for t in results if t]
+    generated = []
+    total_input_tokens = total_output_tokens = 0
+    for i, result in enumerate(results):
+        if not result or not result["text"]:
+            continue
+        generated.append({"content": result["text"], "topic": calls[i][2], "type": calls[i][3]})
+        total_input_tokens += result["input_tokens"]
+        total_output_tokens += result["output_tokens"]
+
     logger.info(f"generated {len(generated)} tweets in {time.monotonic() - started_at:.1f}s")
-    return generated
+    return {
+        "tweets": generated,
+        "input_tokens": total_input_tokens,
+        "output_tokens": total_output_tokens,
+    }
 
 
 def generate_tweet_from_news(
@@ -246,6 +268,7 @@ def generate_tweet_from_news(
         system=system,
         messages=[{"role": "user", "content": user_content}],
     )
+    log_claude_usage(user_id, "news_tweet", message.usage.input_tokens, message.usage.output_tokens)
 
     text = message.content[0].text.strip()
     if text.startswith("```"):
@@ -256,3 +279,31 @@ def generate_tweet_from_news(
     except Exception:
         tweet = text
     return tweet[:max_chars]
+
+
+def rewrite_tweet(user_id: str, text: str, prompt_file: str | None = None) -> dict:
+    cfg = get_user_config(user_id)
+    api_key = cfg.anthropic_api_key if cfg else ""
+
+    prompt_cfg = _resolve_prompt(user_id, prompt_file)
+    system_prompt = prompt_cfg["prompt"] or _FALLBACK_REVISION_PROMPT
+    source = _load_documents(user_id, prompt_cfg["documents"])
+
+    user_content = []
+    if source:
+        user_content.append({
+            "type": "text",
+            "text": "【参考資料】\n" + source,
+            "cache_control": {"type": "ephemeral"},
+        })
+    user_content.append({
+        "type": "text",
+        "text": (
+            "以下のツイート文章を、上記の方針・論調に沿って推敲・リライトしてください。\n"
+            "1024文字以内厳守。JSON配列で1件のみ返答。\n\n"
+            "【元のツイート】\n" + text + "\n\n"
+            '例: ["リライト後のツイート本文"]'
+        ),
+    })
+
+    return _call_claude_once(user_id, api_key, system_prompt, user_content, operation_type="revision")

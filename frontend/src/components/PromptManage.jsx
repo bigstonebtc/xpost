@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../api'
 
 const s = {
@@ -6,6 +6,8 @@ const s = {
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginTop: '20px' },
   title: { fontSize: '18px', fontWeight: 'bold' },
   newBtn: { padding: '8px 16px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
+  headerBtns: { display: 'flex', gap: '8px' },
+  backupBtn: { padding: '8px 16px', background: '#fff', color: '#1a1a2e', border: '1px solid #1a1a2e', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
   card: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '12px' },
   cardHeader: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' },
   cardTitle: { fontSize: '16px', fontWeight: 'bold', flex: 1 },
@@ -27,19 +29,22 @@ const s = {
   cancelBtn: { padding: '8px 16px', background: '#fff', color: '#718096', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
   errMsg: { color: '#e53e3e', fontSize: '13px', marginBottom: '8px' },
   warnMsg: { color: '#dd8800', fontSize: '13px', marginBottom: '8px' },
+  successMsg: { color: '#38a169', fontSize: '13px', marginBottom: '8px' },
   empty: { color: '#999', textAlign: 'center', marginTop: '40px' },
   hint: { color: '#aaa', marginLeft: '6px', fontWeight: 'normal' },
   checkboxRowPlain: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', marginBottom: '12px' },
   hiddenBadge: { display: 'inline-block', fontSize: '11px', color: '#888', background: '#f0f0f0', borderRadius: '4px', padding: '2px 6px', marginLeft: '8px' },
 }
 
-function PromptModal({ initial, documents, onSave, onClose }) {
+function PromptModal({ initial, documents, onSave, onClose, keepOpenOnSave }) {
   const [name, setName] = useState(initial?.name || '')
   const [selectedDocs, setSelectedDocs] = useState(initial?.documents || [])
   const [visible, setVisible] = useState(initial ? initial.visible !== false : true)
   const [body, setBody] = useState(initial?.body || '')
   const [err, setErr] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
   const [saving, setSaving] = useState(false)
+  const mouseDownOnOverlay = useRef(false)
 
   const toggleDoc = (doc) => {
     setSelectedDocs(prev =>
@@ -55,9 +60,15 @@ function PromptModal({ initial, documents, onSave, onClose }) {
     if (!name.trim()) { setErr('プロンプト名は必須です'); return }
     if (name.trim().length > 50) { setErr('プロンプト名は50文字以内です'); return }
     if (!body.trim()) { setErr('プロンプト本文は必須です'); return }
+    setErr('')
+    setSuccessMsg('')
     setSaving(true)
     try {
       await onSave({ name: name.trim(), documents: selectedDocs, visible, body })
+      if (keepOpenOnSave) {
+        setSuccessMsg('保存しました')
+        setSaving(false)
+      }
     } catch (e) {
       setErr(e.message)
       setSaving(false)
@@ -65,10 +76,18 @@ function PromptModal({ initial, documents, onSave, onClose }) {
   }
 
   return (
-    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div
+      style={s.overlay}
+      onMouseDown={e => { mouseDownOnOverlay.current = e.target === e.currentTarget }}
+      onClick={e => {
+        if (mouseDownOnOverlay.current && e.target === e.currentTarget) onClose()
+        mouseDownOnOverlay.current = false
+      }}
+    >
       <div style={s.modal}>
         <div style={s.modalTitle}>{initial ? 'プロンプトを編集' : '新規プロンプト作成'}</div>
         {err && <p style={s.errMsg}>{err}</p>}
+        {successMsg && <p style={s.successMsg}>{successMsg}</p>}
 
         <label style={s.label}>プロンプト名 <span style={{ color: '#e53e3e' }}>*</span></label>
         <input style={s.input} value={name} onChange={e => setName(e.target.value)} placeholder="例：相続税・論点型" maxLength={50} />
@@ -120,7 +139,6 @@ function PromptRow({ prompt, documents, onRefresh }) {
 
   const handleEdit = async ({ name, documents: docs, visible, body }) => {
     await api.updatePrompt(prompt.filename, { name, documents: docs, visible, body })
-    setShowEdit(false)
     onRefresh()
   }
 
@@ -148,6 +166,7 @@ function PromptRow({ prompt, documents, onRefresh }) {
           documents={documents}
           onSave={handleEdit}
           onClose={() => setShowEdit(false)}
+          keepOpenOnSave
         />
       )}
     </>
@@ -159,6 +178,7 @@ export default function PromptManage() {
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
+  const [backingUp, setBackingUp] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -180,13 +200,29 @@ export default function PromptManage() {
     load()
   }
 
+  const handleBackup = async () => {
+    setBackingUp(true)
+    try {
+      await api.downloadPromptBackup()
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
   if (loading) return <p style={{ color: '#888', textAlign: 'center', marginTop: '40px' }}>読み込み中...</p>
 
   return (
     <div style={s.page}>
       <div style={s.header}>
         <h2 style={s.title}>プロンプト管理</h2>
-        <button style={s.newBtn} onClick={() => setShowNew(true)}>＋ 新規プロンプト作成</button>
+        <div style={s.headerBtns}>
+          <button style={s.backupBtn} onClick={handleBackup} disabled={backingUp}>
+            {backingUp ? 'バックアップ中...' : 'プロンプトのバックアップ'}
+          </button>
+          <button style={s.newBtn} onClick={() => setShowNew(true)}>＋ 新規プロンプト作成</button>
+        </div>
       </div>
 
       {prompts.length === 0 && (

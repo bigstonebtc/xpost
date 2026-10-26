@@ -21,11 +21,15 @@ const styles = {
   warnBadge: { color: '#dd8800', fontWeight: 'bold' },
 }
 
-const SCHEDULE_HOURS_MIN = 24
-const SCHEDULE_HOURS_MAX = 720
+const SCHEDULE_DAYS_MIN = 5
+const SCHEDULE_DAYS_MAX = 14
+const SCHEDULE_DAYS_OPTIONS = Array.from(
+  { length: SCHEDULE_DAYS_MAX - SCHEDULE_DAYS_MIN + 1 },
+  (_, i) => SCHEDULE_DAYS_MIN + i
+)
 
 export default function PostSettings() {
-  const [scheduleHours, setScheduleHours] = useState(120)
+  const [scheduleDays, setScheduleDays] = useState(10)
   const [dailyLimit, setDailyLimit] = useState(10)
   const [allowOver140, setAllowOver140] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -51,7 +55,7 @@ export default function PostSettings() {
     try {
       const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
-      setScheduleHours(postingData.schedule_hours ?? 120)
+      setScheduleDays(postingData.schedule_days ?? 10)
       setAllowOver140(postingData.allow_over_140 ?? true)
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')
@@ -155,14 +159,14 @@ export default function PostSettings() {
   }
 
   const save = async () => {
-    const val = Number(scheduleHours)
-    if (!Number.isInteger(val) || val < SCHEDULE_HOURS_MIN || val > SCHEDULE_HOURS_MAX) {
-      flash('err', `${SCHEDULE_HOURS_MIN}〜${SCHEDULE_HOURS_MAX}の整数で指定してください`)
+    const val = Number(scheduleDays)
+    if (!Number.isInteger(val) || val < SCHEDULE_DAYS_MIN || val > SCHEDULE_DAYS_MAX) {
+      flash('err', `${SCHEDULE_DAYS_MIN}〜${SCHEDULE_DAYS_MAX}の整数で指定してください`)
       return
     }
     setSaving(true)
     try {
-      await api.updateScheduleHours(val)
+      await api.updateScheduleDays(val)
       flash('ok', '保存しました')
     } catch (e) {
       flash('err', e.message)
@@ -258,7 +262,7 @@ export default function PostSettings() {
             <span style={{ fontSize: '13px', color: '#555' }}>件</span>
           </div>
           <p style={{ fontSize: '12px', color: '#888', marginTop: '6px', marginBottom: '0' }}>
-            ※ Post nowでの投稿はカウントされません
+            ※ Post nowでの投稿はカウントされません。土日はこの値から3件引いた件数（最低1件）が上限になります。
           </p>
           {limitMsg.text && <p style={limitMsg.type === 'ok' ? styles.successMsg : styles.errMsg}>{limitMsg.text}</p>}
           <button style={styles.saveBtn} onClick={saveLimit} disabled={savingLimit}>
@@ -266,21 +270,21 @@ export default function PostSettings() {
           </button>
         </div>
         <div style={{ padding: '12px 0' }}>
-          <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: '500' }}>投稿タイミング</div>
+          <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: '500' }}>予約範囲</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input
-              type="number"
-              min={SCHEDULE_HOURS_MIN}
-              max={SCHEDULE_HOURS_MAX}
-              step="1"
-              value={scheduleHours}
-              onChange={e => setScheduleHours(e.target.value)}
-              style={{ width: '80px', padding: '7px 10px', border: '1px solid #aaa', borderRadius: '4px', fontSize: '14px' }}
-            />
-            <span style={{ fontSize: '13px', color: '#555' }}>時間以内にランダム投稿</span>
+            <select
+              value={scheduleDays}
+              onChange={e => setScheduleDays(e.target.value)}
+              style={{ padding: '7px 10px', border: '1px solid #aaa', borderRadius: '4px', fontSize: '14px' }}
+            >
+              {SCHEDULE_DAYS_OPTIONS.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: '13px', color: '#555' }}>日間（今日を含む）にランダム投稿</span>
           </div>
           <p style={styles.note}>
-            指定した時間内で、日中（JST 7:00〜21:00）のランダムなタイミングに投稿します（{SCHEDULE_HOURS_MIN}〜{SCHEDULE_HOURS_MAX}時間で指定）。
+            明日から{SCHEDULE_DAYS_MIN - 1}〜{SCHEDULE_DAYS_MAX - 1}日間の範囲で、日中（JST 7:00〜21:00）のランダムなタイミングに投稿します。今日には予約されません。日ごとの件数は空き枠に応じて自動的に平準化されます（土日は上限が少なくなります）。
           </p>
         </div>
         <button style={styles.saveBtn} onClick={save} disabled={saving}>

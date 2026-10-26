@@ -4,12 +4,15 @@ import { getToken, setToken, api } from './api'
 import Dashboard from './components/Dashboard'
 import Queue from './components/Queue'
 import TweetCreate from './components/TweetCreate'
+import Revision from './components/Revision'
 import PromptManage from './components/PromptManage'
+import FixedTweets from './components/FixedTweets'
 import History from './components/History'
 import News from './components/News'
 import NewsSettings from './components/NewsSettings'
 import ApiKeySettings from './components/ApiKeySettings'
 import PostSettings from './components/PostSettings'
+import ClaudeSettings from './components/ClaudeSettings'
 
 const styles = {
   nav: { background: '#1a1a2e', color: '#fff', padding: '12px 16px', display: 'flex', gap: '20px', alignItems: 'center' },
@@ -82,12 +85,16 @@ function SettingsLayout({ legacyNewsEnabled }) {
         <NavLink to="/settings/api" style={{ textDecoration: 'none' }}>
           {({ isActive }) => <button style={tabStyle(isActive)}>API設定</button>}
         </NavLink>
+        <NavLink to="/settings/claude" style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>課金統計</button>}
+        </NavLink>
       </div>
       <div style={{ paddingTop: '16px' }}>
         <Routes>
           <Route index element={<PostSettings />} />
           {legacyNewsEnabled && <Route path="news" element={<NewsSettings />} />}
           <Route path="api" element={<ApiKeySettings />} />
+          <Route path="claude" element={<ClaudeSettings />} />
         </Routes>
       </div>
     </div>
@@ -114,6 +121,8 @@ export default function App() {
         <NavLink to="/dashboard" style={navLinkStyle}>ダッシュボード</NavLink>
         <NavLink to="/queue" style={navLinkStyle}>キュー</NavLink>
         <NavLink to="/create" style={navLinkStyle}>ツイート作成</NavLink>
+        <NavLink to="/revision" style={navLinkStyle}>リライト</NavLink>
+        <NavLink to="/fixed-tweets" style={navLinkStyle}>正拳突き</NavLink>
         <NavLink to="/prompts" style={navLinkStyle}>プロンプト管理</NavLink>
         {legacyNewsEnabled && <NavLink to="/news" style={navLinkStyle}>ニュース</NavLink>}
         <NavLink to="/history" style={navLinkStyle}>履歴</NavLink>
@@ -124,6 +133,8 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/queue" element={<Queue />} />
           <Route path="/create" element={<TweetCreate />} />
+          <Route path="/revision" element={<Revision />} />
+          <Route path="/fixed-tweets" element={<FixedTweets />} />
           <Route path="/prompts" element={<PromptManage />} />
           {legacyNewsEnabled && <Route path="/news" element={<News />} />}
           <Route path="/news-settings" element={<Navigate to="/settings" />} />

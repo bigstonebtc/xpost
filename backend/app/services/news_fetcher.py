@@ -11,6 +11,7 @@ import anthropic
 
 from app.logger import get_logger
 from app.paths import relevance_prompt_path
+from app.services.claude_usage import log_claude_usage
 from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
@@ -74,6 +75,7 @@ def _ai_relevance_check(user_id: str, api_key: str, title: str, summary: str, pr
                 {"role": "assistant", "content": '{"relevant":'},
             ],
         )
+        log_claude_usage(user_id, "news_relevance", message.usage.input_tokens, message.usage.output_tokens)
         rest = message.content[0].text.strip()
         text = '{"relevant":' + rest
         result = json.loads(text)
