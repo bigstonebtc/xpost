@@ -13,9 +13,11 @@ from app.dependencies import get_current_user
 from app.logger import get_logger
 from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
+from app.routers.tweets import _ATTACHED_URL_RE
 from app.services.poster import post_tweet_with_retry
+from app.services.review import ReviewError, review_tweet
 from app.services.scheduler import schedule_tweet
-from app.services.scheduling import DEFAULT_SCHEDULE_DAYS, schedule_one
+from app.services.scheduling import DEFAULT_SCHEDULE_DAYS, pick_weighted_day, schedule_one
 from app.utils.rate_limit import RateLimitExceeded, format_message
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -31,11 +33,15 @@ class TweetAdd(BaseModel):
     content: str
 
 
-def _check_char_limit(tweet: Tweet, db: Session) -> None:
+def _check_content_char_limit(content: str, db: Session) -> None:
     ps = db.query(PostingSettings).first()
     allow_over_140 = ps.allow_over_140 if ps else True
-    if not allow_over_140 and len(tweet.content) > 140:
+    if not allow_over_140 and len(content) > 140:
         raise HTTPException(status_code=400, detail="140文字を超えています")
+
+
+def _check_char_limit(tweet: Tweet, db: Session) -> None:
+    _check_content_char_limit(tweet.content, db)
 
 
 @router.post("/reschedule-all")
@@ -220,9 +226,87 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str 
 
     tweet.status = TweetStatus.scheduled
     tweet.scheduled_at = scheduled_at
+    # 以前 +R で予約→unschedule された投稿の場合に、元のツイート欄・青字表示が残らないようにする
+    tweet.original_content = None
     db.commit()
     schedule_tweet(user, tweet_id, scheduled_at)
 
+    return {"scheduled_at": scheduled_at}
+
+
+@router.post("/{tweet_id}/review-schedule")
+def review_and_schedule(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    """+R：有効なレビュー用プロンプトで本文をレビューし、修正後の本文に置き換えて予約する。
+    予約時刻の決め方は通常の Schedule と同じ。レビューに失敗した場合は予約せず、
+    投稿は未予約のまま残す。本文末尾のニュースURLはレビュー対象外とし、そのまま引き継ぐ。"""
+    logger = get_logger(user, "posting")
+
+    def fail(status_code: int, detail: str):
+        logger.warning(f"review failed tweet_id={tweet_id}: {detail}")
+        raise HTTPException(status_code=status_code, detail=detail)
+
+    tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
+    if not tweet:
+        raise HTTPException(status_code=404, detail="ツイートが見つかりません")
+
+    ps = db.query(PostingSettings).first()
+    prompt_file = ps.review_prompt_file if ps else None
+    if not prompt_file:
+        fail(400, "レビュー用プロンプトが設定されていません")
+    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
+    daily_limit = ps.daily_schedule_limit if ps else 10
+
+    # 空き枠が無ければ、APIを呼ぶ前に打ち切る（結果を予約できず料金だけかかるのを防ぐ）
+    if pick_weighted_day(schedule_days, daily_limit, db) is None:
+        fail(400, "予約範囲内に空き枠がありません")
+
+    original = tweet.content
+    match = _ATTACHED_URL_RE.search(original)
+    body = original[:match.start()].rstrip() if match else original
+    url_suffix = "\n" + match.group(1) if match else ""
+    if not body.strip():
+        fail(400, "レビューする本文がありません")
+
+    started_at = time.monotonic()
+    try:
+        result = review_tweet(user, body, prompt_file)
+    except RateLimitExceeded as e:
+        fail(429, format_message(e.api_type, e.reset_at))
+    except ReviewError as e:
+        fail(502, f"レビューに失敗しました: {e}")
+    except Exception as e:
+        logger.error(f"review error tweet_id={tweet_id}: {e}", exc_info=True)
+        fail(502, f"レビューに失敗しました: {e}")
+    elapsed = time.monotonic() - started_at
+
+    new_content = result["text"] + url_suffix
+    if len(new_content) > 1024:
+        fail(400, "レビュー後の本文が1024文字を超えたため予約しませんでした")
+    try:
+        _check_content_char_limit(new_content, db)
+    except HTTPException:
+        fail(400, "レビュー後の本文が140文字を超えたため予約しませんでした")
+
+    # レビュー中（数秒〜数十秒）に別画面で編集・削除・予約された場合は、その操作を優先する
+    db.refresh(tweet)
+    if tweet.status != TweetStatus.queued or tweet.content != original:
+        fail(409, "レビュー中に投稿が変更されたため予約しませんでした")
+
+    scheduled_at = schedule_one(schedule_days, daily_limit, db)
+    if scheduled_at is None:
+        fail(400, "予約範囲内に空き枠がありません")
+
+    tweet.original_content = original
+    tweet.content = new_content
+    tweet.status = TweetStatus.scheduled
+    tweet.scheduled_at = scheduled_at
+    db.commit()
+    schedule_tweet(user, tweet_id, scheduled_at)
+
+    logger.info(
+        f"review succeeded tweet_id={tweet_id} prompt={prompt_file} "
+        f"tokens={result['input_tokens']}+{result['output_tokens']} in {elapsed:.1f}s scheduled_at={scheduled_at}"
+    )
     return {"scheduled_at": scheduled_at}
 
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import { toJstDate, formatJst } from '../utils/jst'
+import { addedSegments } from '../utils/diff'
 
 const s = {
   card: { background: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '10px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
@@ -9,7 +10,7 @@ const s = {
   failedBadge: { display: 'inline-block', fontSize: '12px', color: '#e53e3e', fontWeight: 'bold', marginBottom: '8px' },
   text: { fontSize: '15px', lineHeight: '1.6', marginBottom: '10px', whiteSpace: 'pre-wrap' },
   meta: (over) => ({ fontSize: '12px', color: over ? '#e53e3e' : '#999', marginBottom: '8px' }),
-  btnRow: { display: 'flex', gap: '8px' },
+  btnRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
   btn: (color) => ({ padding: '6px 14px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', background: color, color: '#fff', fontWeight: 'bold' }),
   textarea: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '15px', lineHeight: '1.6', resize: 'vertical', minHeight: '160px', fontFamily: 'inherit', boxSizing: 'border-box' },
   counter: (over) => ({ fontSize: '12px', textAlign: 'right', marginBottom: '8px', color: over ? '#e53e3e' : '#888' }),
@@ -38,6 +39,14 @@ const s = {
   modalTitle: { fontSize: '16px', fontWeight: 'bold', marginBottom: '14px' },
   detailRow: { fontSize: '13px', marginBottom: '8px', lineHeight: '1.6', wordBreak: 'break-word' },
   detailLabel: { color: '#888', marginRight: '6px' },
+  detailOriginal: { whiteSpace: 'pre-wrap', marginTop: '4px', padding: '8px', background: '#f7f7f9', borderRadius: '4px' },
+  reviewAdded: { color: '#2b6cb0' },
+  modeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '16px' },
+  reviewSelector: { position: 'relative', flexShrink: 0 },
+  reviewBtn: { padding: '3px 10px', background: '#fff', color: '#4a5568', border: '1px solid #cbd5e0', borderRadius: '12px', cursor: 'pointer', fontSize: '12px' },
+  reviewMenuOverlay: { position: 'fixed', inset: 0, zIndex: 999 },
+  reviewMenu: { position: 'absolute', right: 0, top: '100%', marginTop: '4px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '6px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', zIndex: 1000, minWidth: '180px', maxHeight: '300px', overflowY: 'auto' },
+  reviewMenuItem: (active) => ({ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: active ? '#ebf4ff' : '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: active ? 'bold' : 'normal' }),
 }
 
 const ATTACHED_URL_RE = /(?:^|\n)(https?:\/\/\S+)\s*$/
@@ -46,7 +55,96 @@ function hasAttachedNewsUrl(content) {
   return ATTACHED_URL_RE.test(content)
 }
 
-function TweetCard({ tweet, onRefresh, onUpdateContent }) {
+// +R で予約された投稿の本文。元のツイートと比べて追加・変更された箇所を青字にする
+function ReviewedText({ original, content }) {
+  return addedSegments(original, content).map((seg, i) =>
+    seg.added ? <span key={i} style={s.reviewAdded}>{seg.text}</span> : <span key={i}>{seg.text}</span>
+  )
+}
+
+function GenDetailModal({ tweet, showOriginal, onClose }) {
+  const mouseDownOnOverlay = useRef(false)
+  return (
+    <div
+      style={s.overlay}
+      onMouseDown={e => { mouseDownOnOverlay.current = e.target === e.currentTarget }}
+      onClick={e => {
+        if (mouseDownOnOverlay.current && e.target === e.currentTarget) onClose()
+        mouseDownOnOverlay.current = false
+      }}
+    >
+      <div style={s.modal}>
+        <div style={s.modalTitle}>Details</div>
+        <div style={s.detailRow}><span style={s.detailLabel}>Topic:</span>{tweet.used_topic || '—'}</div>
+        <div style={s.detailRow}><span style={s.detailLabel}>Type:</span>{tweet.used_type || '—'}</div>
+        {showOriginal && (
+          <div style={s.detailRow}>
+            <span style={s.detailLabel}>元のツイート:</span>
+            <div style={s.detailOriginal}>{tweet.original_content}</div>
+          </div>
+        )}
+        <div style={s.btnRow}>
+          <button style={s.btn('#718096')} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReviewPromptSelector({ reviewPrompt, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [prompts, setPrompts] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const handleOpen = async () => {
+    setOpen(true)
+    try { setPrompts(await api.listPrompts()) }
+    catch (e) { alert(e.message); setOpen(false) }
+  }
+
+  const handleSelect = async (filename) => {
+    setSaving(true)
+    try {
+      const res = await api.updateReviewPrompt(filename)
+      onChange(res.review_prompt)
+      setOpen(false)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const current = reviewPrompt?.filename || null
+  return (
+    <div style={s.reviewSelector}>
+      <button style={s.reviewBtn} onClick={handleOpen} title="+R で使うレビュー用プロンプト">
+        Review: {reviewPrompt?.name || 'なし'}
+      </button>
+      {open && (
+        <>
+          <div style={s.reviewMenuOverlay} onClick={() => setOpen(false)} />
+          <div style={s.reviewMenu}>
+            {prompts == null ? (
+              <div style={{ padding: '8px 12px', fontSize: '13px', color: '#888' }}>読み込み中...</div>
+            ) : (
+              <>
+                <button style={s.reviewMenuItem(current == null)} onClick={() => handleSelect(null)} disabled={saving}>なし</button>
+                {prompts.map(p => (
+                  <button key={p.filename} style={s.reviewMenuItem(current === p.filename)} onClick={() => handleSelect(p.filename)} disabled={saving}>
+                    {p.name}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function TweetCard({ tweet, reviewEnabled, onRefresh, onUpdateContent }) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(tweet.content)
   const [loading, setLoading] = useState(false)
@@ -64,7 +162,6 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [selectedArticleUrl, setSelectedArticleUrl] = useState(null)
   const [showDetail, setShowDetail] = useState(false)
   const [showGenDetail, setShowGenDetail] = useState(false)
-  const genDetailMouseDownOnOverlay = useRef(false)
 
   const isScheduled = tweet.status === 'scheduled'
   const isFailed = tweet.status === 'failed'
@@ -109,6 +206,13 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const handleSchedule = async () => {
     setLoading(true)
     try { await api.schedule(tweet.id); onRefresh() }
+    catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  const handleReviewSchedule = async () => {
+    setLoading(true)
+    try { await api.reviewSchedule(tweet.id); onRefresh() }
     catch (e) { alert(e.message) }
     finally { setLoading(false) }
   }
@@ -282,7 +386,11 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
       ) : (
         <>
           {isFailed && <div style={s.failedBadge}>⚠ 投稿失敗</div>}
-          <div style={s.text}>{tweet.content}</div>
+          <div style={s.text}>
+            {isScheduled && tweet.original_content
+              ? <ReviewedText original={tweet.original_content} content={tweet.content} />
+              : tweet.content}
+          </div>
           <div style={s.meta(tweet.content.length > 140)}>{tweet.content.length}文字</div>
           {imagePreviewUrl && (
             <img
@@ -318,13 +426,20 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
               <div style={s.scheduled}>{formatScheduled(tweet.scheduled_at)}</div>
               <div style={{ ...s.btnRow, marginTop: '8px' }}>
                 <button style={s.btn('#718096')} onClick={handleUnschedule} disabled={loading}>unschedule</button>
+                <button style={s.btn('#718096')} onClick={() => setShowGenDetail(true)} disabled={loading}>details</button>
                 <button style={s.btn('#e53e3e')} onClick={handleDiscard} disabled={loading}>delete</button>
               </div>
+              {showGenDetail && (
+                <GenDetailModal tweet={tweet} showOriginal={!!tweet.original_content} onClose={() => setShowGenDetail(false)} />
+              )}
             </>
           ) : (
             <>
               <div style={s.btnRow}>
                 <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
+                {reviewEnabled && (
+                  <button style={s.btn('#38a169')} onClick={handleReviewSchedule} disabled={loading} title="レビューしてから予約（Review & Schedule）">+R</button>
+                )}
                 <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
                 {imagePreviewUrl ? (
                   <>
@@ -345,23 +460,7 @@ function TweetCard({ tweet, onRefresh, onUpdateContent }) {
               </div>
 
               {showGenDetail && (
-                <div
-                  style={s.overlay}
-                  onMouseDown={e => { genDetailMouseDownOnOverlay.current = e.target === e.currentTarget }}
-                  onClick={e => {
-                    if (genDetailMouseDownOnOverlay.current && e.target === e.currentTarget) setShowGenDetail(false)
-                    genDetailMouseDownOnOverlay.current = false
-                  }}
-                >
-                  <div style={s.modal}>
-                    <div style={s.modalTitle}>Details</div>
-                    <div style={s.detailRow}><span style={s.detailLabel}>Topic:</span>{tweet.used_topic || '—'}</div>
-                    <div style={s.detailRow}><span style={s.detailLabel}>Type:</span>{tweet.used_type || '—'}</div>
-                    <div style={s.btnRow}>
-                      <button style={s.btn('#718096')} onClick={() => setShowGenDetail(false)}>Close</button>
-                    </div>
-                  </div>
-                </div>
+                <GenDetailModal tweet={tweet} showOriginal={false} onClose={() => setShowGenDetail(false)} />
               )}
 
               {newsPanelOpen && (
@@ -430,13 +529,17 @@ export default function Queue() {
   const [tweets, setTweets] = useState([])
   const [loading, setLoading] = useState(false)
   const [scheduleDays, setScheduleDays] = useState(null)
+  const [reviewPrompt, setReviewPrompt] = useState(null)
   const [rescheduling, setRescheduling] = useState(false)
 
   const load = () => api.queue().then(setTweets).catch(e => alert(e.message))
 
   useEffect(() => { load() }, [])
   useEffect(() => {
-    api.getPostingSettings().then(s => setScheduleDays(s.schedule_days)).catch(() => {})
+    api.getPostingSettings().then(s => {
+      setScheduleDays(s.schedule_days)
+      setReviewPrompt(s.review_prompt)
+    }).catch(() => {})
   }, [])
 
   const handleClear = async () => {
@@ -480,10 +583,13 @@ export default function Queue() {
         </div>
       </div>
       {scheduleDays != null && (
-        <p style={s.modeInfo}>現在の投稿モード：明日から{scheduleDays - 1}日間にランダムに投稿</p>
+        <div style={s.modeRow}>
+          <p style={{ ...s.modeInfo, marginBottom: 0 }}>現在の投稿モード：明日から{scheduleDays - 1}日間にランダムに投稿</p>
+          <ReviewPromptSelector reviewPrompt={reviewPrompt} onChange={setReviewPrompt} />
+        </div>
       )}
       {tweets.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>キューが空です</p>}
-      {tweets.map(t => <TweetCard key={t.id} tweet={t} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
+      {tweets.map(t => <TweetCard key={t.id} tweet={t} reviewEnabled={!!reviewPrompt} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
     </div>
   )
 }

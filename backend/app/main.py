@@ -52,6 +52,20 @@ def _ensure_posting_settings_schedule_days_column(user_id: str) -> None:
         conn.commit()
 
 
+def _ensure_review_columns(user_id: str) -> None:
+    """+R（レビューしてから予約）用のカラムを追加する（冪等）。
+    tweets.original_content: レビュー前の本文 / posting_settings.review_prompt_file: 有効なレビュー用プロンプト"""
+    engine = get_engine(user_id)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(tweets)").fetchall()}
+        if "original_content" not in cols:
+            conn.exec_driver_sql("ALTER TABLE tweets ADD COLUMN original_content VARCHAR(1024)")
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(posting_settings)").fetchall()}
+        if "review_prompt_file" not in cols:
+            conn.exec_driver_sql("ALTER TABLE posting_settings ADD COLUMN review_prompt_file VARCHAR(255)")
+        conn.commit()
+
+
 def _recover_scheduled_tweets(user_id: str) -> None:
     from app.models.tweet import Tweet, TweetStatus
     from app.services.scheduler import schedule_tweet
@@ -165,6 +179,7 @@ def _init_user(user_id: str) -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_tweet_topic_type_columns(user_id)
     _ensure_posting_settings_schedule_days_column(user_id)
+    _ensure_review_columns(user_id)
 
     _seed_news_data(user_id)
     _ensure_news_sources_v2(user_id)

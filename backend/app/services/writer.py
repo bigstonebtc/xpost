@@ -13,6 +13,9 @@ from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 
+# ツイート生成・リライト・+Rレビューで共通に使うモデル
+GENERATION_MODEL = "claude-opus-4-7"
+
 _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文字以内のツイートを1件生成してください。JSON配列で返答。例: [\"ツイート本文\"]"
 _FALLBACK_NEWS_PROMPT = "あなたはXアカウントの運用担当です。提供されたニュース記事をもとに140文字以内のツイートを1件生成してください。URLは別途付与するため本文に含めないこと。JSON配列で1件のみ返答。例: [\"ツイート本文\"]"
 _FALLBACK_REVISION_PROMPT = "あなたはXアカウントの運用担当です。与えられたツイート文章を、文体や論調を保ったまま推敲・リライトしてください。"
@@ -116,7 +119,7 @@ def _call_claude_once(user_id: str, api_key: str, system_prompt: str, user_conte
     check_and_record(user_id, "anthropic")
     _client = anthropic.Anthropic(api_key=api_key)
     message = _client.messages.create(
-        model="claude-opus-4-7",
+        model=GENERATION_MODEL,
         max_tokens=2048,
         system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],

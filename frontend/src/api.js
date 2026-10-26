@@ -49,6 +49,7 @@ export const api = {
   addToQueue: (content) => request('POST', '/queue/add', { content }),
   post: (id) => request('POST', `/queue/${id}/post`),
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
+  reviewSchedule: (id) => request('POST', `/queue/${id}/review-schedule`),
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
   reschedule: (id) => request('POST', `/queue/${id}/reschedule`),
@@ -101,6 +102,7 @@ export const api = {
   updatePostingMode: (posting_mode) => request('PUT', '/settings/posting/mode', { posting_mode }),
   updateScheduleDays: (schedule_days) => request('PUT', '/settings/posting/schedule-days', { schedule_days }),
   updateAllowOver140: (allow_over_140) => request('PUT', '/settings/posting/allow-over-140', { allow_over_140 }),
+  updateReviewPrompt: (review_prompt_file) => request('PUT', '/settings/posting/review-prompt', { review_prompt_file }),
   // Tor
   torStatus: () => request('GET', '/tor/status'),
   torRestart: () => request('POST', '/tor/restart'),

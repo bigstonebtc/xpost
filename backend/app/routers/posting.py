@@ -7,6 +7,7 @@ from app.dependencies import get_current_user
 from app.logger import get_logger
 from app.models.posting import PostingSettings
 from app.services import posting_mode
+from app.services.review import get_review_prompt
 from app.services.scheduling import SCHEDULE_DAYS_MAX, SCHEDULE_DAYS_MIN
 
 router = APIRouter(prefix="/settings/posting", tags=["posting"])
@@ -35,6 +36,8 @@ def get_posting_settings(db: Session = Depends(get_db), user: str = Depends(get_
         "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
         "schedule_days": ps.schedule_days if ps else 10,
         "allow_over_140": ps.allow_over_140 if ps else True,
+        # 有効なレビュー用プロンプト（+R用）。未設定・ファイル削除済みなら None（=「なし」）
+        "review_prompt": get_review_prompt(user, ps.review_prompt_file if ps else None),
         "posting_mode": posting_mode.get_mode(user),
         "default_mode": posting_mode.get_default_mode(user),
         "note": _mode_note(user),
@@ -73,6 +76,27 @@ def update_allow_over_140(body: AllowOver140Update, db: Session = Depends(get_db
     ps.allow_over_140 = body.allow_over_140
     db.commit()
     return {"ok": True}
+
+
+class ReviewPromptUpdate(BaseModel):
+    # None で「なし」
+    review_prompt_file: str | None = None
+
+
+@router.put("/review-prompt")
+def update_review_prompt(body: ReviewPromptUpdate, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    ps = db.query(PostingSettings).first()
+    if not ps:
+        raise HTTPException(status_code=404, detail="設定が見つかりません")
+    review_prompt = None
+    if body.review_prompt_file:
+        review_prompt = get_review_prompt(user, body.review_prompt_file)
+        if not review_prompt:
+            raise HTTPException(status_code=404, detail="プロンプトが見つかりません")
+    ps.review_prompt_file = review_prompt["filename"] if review_prompt else None
+    db.commit()
+    get_logger(user, "app").info(f"review_prompt changed via UI: {ps.review_prompt_file}")
+    return {"review_prompt": review_prompt}
 
 
 class PostingModeUpdate(BaseModel):
