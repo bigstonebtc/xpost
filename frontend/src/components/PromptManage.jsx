@@ -6,6 +6,8 @@ const s = {
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', marginTop: '20px' },
   title: { fontSize: '18px', fontWeight: 'bold' },
   newBtn: { padding: '8px 16px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
+  headerBtns: { display: 'flex', gap: '8px' },
+  backupBtn: { padding: '8px 16px', background: '#fff', color: '#1a1a2e', border: '1px solid #1a1a2e', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
   card: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', marginBottom: '12px' },
   cardHeader: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' },
   cardTitle: { fontSize: '16px', fontWeight: 'bold', flex: 1 },
@@ -176,6 +178,7 @@ export default function PromptManage() {
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
+  const [backingUp, setBackingUp] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -197,13 +200,29 @@ export default function PromptManage() {
     load()
   }
 
+  const handleBackup = async () => {
+    setBackingUp(true)
+    try {
+      await api.downloadPromptBackup()
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
   if (loading) return <p style={{ color: '#888', textAlign: 'center', marginTop: '40px' }}>読み込み中...</p>
 
   return (
     <div style={s.page}>
       <div style={s.header}>
         <h2 style={s.title}>プロンプト管理</h2>
-        <button style={s.newBtn} onClick={() => setShowNew(true)}>＋ 新規プロンプト作成</button>
+        <div style={s.headerBtns}>
+          <button style={s.backupBtn} onClick={handleBackup} disabled={backingUp}>
+            {backingUp ? 'バックアップ中...' : 'プロンプトのバックアップ'}
+          </button>
+          <button style={s.newBtn} onClick={() => setShowNew(true)}>＋ 新規プロンプト作成</button>
+        </div>
       </div>
 
       {prompts.length === 0 && (

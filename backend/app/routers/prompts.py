@@ -1,13 +1,20 @@
 import re
+import zipfile
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.dependencies import get_current_user
 from app.paths import documents_dir, prompts_dir
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
+
+JST = ZoneInfo("Asia/Tokyo")
 
 _VALID_FILENAME = re.compile(r"^[^\\/\x00-\x1f]+\.prompt$")
 _UNSAFE_FILENAME_CHARS = re.compile(r"[\\/\x00-\x1f]")
@@ -95,6 +102,42 @@ def list_prompts(visible_only: bool = False, user: str = Depends(get_current_use
     if visible_only:
         result = [p for p in result if p["visible"]]
     return result
+
+
+@router.get("/backup")
+def backup_prompts(user: str = Depends(get_current_user)):
+    """全プロンプトをZipにまとめてダウンロードする。Zip内の各ファイル名は
+    管理画面で使っている名前（nameフィールド）＋.promptとする（オンディスクの
+    ファイル名ではない）。本文はパーサを介さず生テキストのまま保存する"""
+    _ensure_dirs(user)
+
+    buf = BytesIO()
+    used_names: set[str] = set()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(prompts_dir(user).glob("*.prompt")):
+            try:
+                parsed = _parse_prompt_file(p)
+            except Exception:
+                continue
+
+            base = _slugify(parsed["name"])
+            entry_name = base + ".prompt"
+            i = 2
+            while entry_name in used_names:
+                entry_name = f"{base}_{i}.prompt"
+                i += 1
+            used_names.add(entry_name)
+
+            zf.writestr(entry_name, p.read_bytes())
+
+    buf.seek(0)
+    today = datetime.now(JST).strftime("%y%m%d")
+    zip_filename = f"promptbackup_{user}{today}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
 
 
 @router.get("/{filename}")

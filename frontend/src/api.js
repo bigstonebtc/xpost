@@ -116,6 +116,27 @@ export const api = {
   updatePrompt: (filename, body) => request('PUT', `/prompts/${filename}`, body),
   deletePrompt: (filename) => request('DELETE', `/prompts/${filename}`),
   listDocuments: () => request('GET', '/prompts/documents/list'),
+  downloadPromptBackup: () =>
+    fetch(`${BASE}/prompts/backup`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async res => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || 'バックアップの取得に失敗しました')
+      }
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : 'promptbackup.zip'
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }),
   generateWithPrompt: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
   // リライト
   rewrite: (text, prompt_id) => request('POST', '/revision/rewrite', { text, prompt_id }),
