@@ -1,7 +1,8 @@
 """+R（レビューしてから予約）のレビュー処理。
 
-有効なレビュー用プロンプト（通常の .prompt ファイル）をシステムプロンプトにして
-ツイート本文を Claude に渡し、返答をそのまま修正後の本文とする。
+有効なレビュー用プロンプト（通常の .prompt ファイル）内の {review_target} を
+レビュー前のツイート本文に置き換え、1通のメッセージとして Claude に渡す。
+返答はそのまま修正後の本文とする。
 返答に本文以外を含めないよう指示するのはレビュー用プロンプト側の役割なので、
 ここでは JSON 解析などの加工はせず、前後の空白除去だけを行う。
 """
@@ -17,6 +18,9 @@ from app.utils.rate_limit import check_and_record
 _REVIEW_TIMEOUT_SECONDS = 120
 
 _HEADER_KEYS = ("name", "documents", "visible", "topics", "types")
+
+# プロンプト内でレビュー前の本文に置き換えるプレースホルダ
+REVIEW_TARGET_PLACEHOLDER = "{review_target}"
 
 
 class ReviewError(Exception):
@@ -42,20 +46,23 @@ def get_review_prompt(user_id: str, filename: str | None) -> dict | None:
     return {"filename": path.name, "name": name}
 
 
-def _system_prompt_from_file(path) -> tuple[str, list[str]]:
-    """[prompt] セクションがあればその本文を、無ければヘッダー行と # コメントを除いた
-    全文をシステムプロンプトにする（管理画面では [prompt] を書かずに本文だけ保存できるため）。"""
+def _prompt_from_file(path) -> tuple[str, list[str]]:
+    """[prompt] セクションがあればその本文を、無ければ先頭のヘッダー行・# コメントを除いた
+    残り全文をプロンプトにする（管理画面では [prompt] を書かずに本文だけ保存できるため）。
+    # コメントとして除くのは本文が始まる前の行だけ。本文中の「## 出力形式」のような
+    Markdown見出しはそのまま残す。"""
     parsed = _parse_prompt_file(path)
     prompt = parsed["prompt"]
     if not prompt:
         lines = []
+        in_header = True
         for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            key, sep, _ = stripped.partition("=")
-            if sep and key.strip() in _HEADER_KEYS:
-                continue
+            if in_header:
+                stripped = line.strip()
+                key, sep, _ = stripped.partition("=")
+                if not stripped or stripped.startswith("#") or (sep and key.strip() in _HEADER_KEYS):
+                    continue
+                in_header = False
             lines.append(line)
         prompt = "\n".join(lines).strip()
     return prompt, parsed["documents"]
@@ -67,9 +74,11 @@ def review_tweet(user_id: str, text: str, prompt_file: str) -> dict:
     path = _prompt_path(user_id, prompt_file)
     if not path:
         raise ReviewError("レビュー用プロンプトが見つかりません")
-    system_prompt, documents = _system_prompt_from_file(path)
-    if not system_prompt:
+    prompt, documents = _prompt_from_file(path)
+    if not prompt:
         raise ReviewError("レビュー用プロンプトの本文が空です")
+    if REVIEW_TARGET_PLACEHOLDER not in prompt:
+        raise ReviewError(f"レビュー用プロンプトに {REVIEW_TARGET_PLACEHOLDER} がありません")
 
     cfg = get_user_config(user_id)
     api_key = cfg.anthropic_api_key if cfg else ""
@@ -80,7 +89,8 @@ def review_tweet(user_id: str, text: str, prompt_file: str) -> dict:
     source = _load_documents(user_id, documents)
     if source:
         user_content.append({"type": "text", "text": "【参考資料】\n" + source})
-    user_content.append({"type": "text", "text": text})
+    # str.format() は本文やプロンプト中の { } で失敗するため replace を使う
+    user_content.append({"type": "text", "text": prompt.replace(REVIEW_TARGET_PLACEHOLDER, text)})
 
     check_and_record(user_id, "anthropic")
     client = anthropic.Anthropic(api_key=api_key, timeout=_REVIEW_TIMEOUT_SECONDS)
@@ -88,7 +98,6 @@ def review_tweet(user_id: str, text: str, prompt_file: str) -> dict:
         message = client.messages.create(
             model=GENERATION_MODEL,
             max_tokens=2048,
-            system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
     except anthropic.APITimeoutError as e:
