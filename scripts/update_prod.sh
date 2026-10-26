@@ -1,7 +1,12 @@
 #!/bin/bash
 # xpost 本番環境（/app/xpost）の一発更新スクリプト
 #
-# 使い方: sudo ./scripts/update_prod.sh
+# 使い方: sudo ./scripts/update_prod.sh <追従するブランチ名>
+#   例: sudo ./scripts/update_prod.sh main
+#   引数の代わりに環境変数 XPOST_DEPLOY_BRANCH でも指定できる
+#   （sudo は環境変数を引き継がないため、sudo XPOST_DEPLOY_BRANCH=main ./scripts/update_prod.sh のように渡す）
+#
+# ブランチ名はデフォルト値を持たない。指定が無ければエラーで終了する。
 #
 # 処理内容:
 #   1. 現在のコミットを記録（失敗時のロールバック用）
@@ -16,11 +21,10 @@
 
 set -uo pipefail
 
-# 本番が追従する開発ブランチ（決め打ち）。
-# 誤って別ブランチをpullしないよう、意図的にハードコードしている。
-# 開発ブランチが変わったら（例: main にマージして本番をmain追従に切り替える等）
-# ここを書き換えること。
-BRANCH="claude/addition20260909"
+# 本番が追従するブランチ。実行のたびに明示的に指定させる。
+# リポジトリ内にデフォルト値を持たせると、pullやロールバックのたびに
+# その値へ戻ってしまい、意図しないブランチを追従する原因になるため空欄とする。
+BRANCH="${1:-${XPOST_DEPLOY_BRANCH:-}}"
 
 APP_ROOT="${XPOST_APP_ROOT:-/app/xpost}"
 PROJECT_NAME="${XPOST_COMPOSE_PROJECT:-xpost_prod}"
@@ -37,6 +41,13 @@ rollback() {
   docker compose -p "$project" up -d
 }
 
+if [ -z "$BRANCH" ]; then
+  echo "追従するブランチが指定されていません。" >&2
+  echo "使い方: sudo $0 <ブランチ名>   (例: sudo $0 main)" >&2
+  echo "  または環境変数 XPOST_DEPLOY_BRANCH で指定してください。" >&2
+  exit 1
+fi
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "root権限で実行してください: sudo $0" >&2
   exit 1
@@ -48,8 +59,8 @@ CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
   echo "現在チェックアウトされているブランチ ($CURRENT_BRANCH) が" >&2
   echo "スクリプトの想定ブランチ ($BRANCH) と一致しません。誤ったブランチを" >&2
-  echo "pullしないよう処理を中断します。意図した変更であれば、このスクリプト" >&2
-  echo "冒頭のBRANCH変数を更新してください。" >&2
+  echo "pullしないよう処理を中断します。ブランチを切り替える場合は、先に" >&2
+  echo "git checkout で切り替えてから、そのブランチ名を指定して実行してください。" >&2
   exit 1
 fi
 
