@@ -9,6 +9,6 @@ class PostingSettings(Base):
 
     id = Column(Integer, primary_key=True)
     daily_schedule_limit = Column(Integer, default=10, nullable=False)
-    schedule_days = Column(Integer, default=10, nullable=False)
+    schedule_hours = Column(Integer, default=120, nullable=False)
     allow_over_140 = Column(Boolean, default=True, nullable=False)
     updated_at = Column(TZDateTime(), onupdate=func.now())

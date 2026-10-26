@@ -16,9 +16,8 @@ def _file_handler(directory: Path, filename: str) -> logging.Handler:
     directory.mkdir(parents=True, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(
         directory / filename,
-        # ディスク節約のため小さめに保つ（1ファイル最大 1MB × 世代3 = 3MB）
-        maxBytes=1 * 1024 * 1024,  # 1MB
-        backupCount=2,
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
         encoding="utf-8",
     )
     handler.setFormatter(_FORMATTER)
