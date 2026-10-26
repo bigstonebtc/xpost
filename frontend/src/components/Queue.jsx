@@ -447,7 +447,7 @@ function TweetCard({ tweet, reviewActive, onRefresh, onUpdateContent }) {
                   onClick={handleSchedule}
                   disabled={loading}
                 >
-                  <StableLabel label="Schedule" busyLabel={reviewActive ? 'レビュー中…' : '予約中…'} busy={scheduling} />
+                  <StableLabel label="Schedule" busyLabel={reviewActive ? 'Reviewing' : '予約中…'} busy={scheduling} />
                 </button>
                 <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
                 {imagePreviewUrl ? (
