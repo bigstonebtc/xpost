@@ -49,7 +49,6 @@ export const api = {
   addToQueue: (content) => request('POST', '/queue/add', { content }),
   post: (id) => request('POST', `/queue/${id}/post`),
   schedule: (id) => request('POST', `/queue/${id}/schedule`),
-  reviewSchedule: (id) => request('POST', `/queue/${id}/review-schedule`),
   unschedule: (id) => request('POST', `/queue/${id}/unschedule`),
   discard: (id) => request('POST', `/queue/${id}/discard`),
   reschedule: (id) => request('POST', `/queue/${id}/reschedule`),

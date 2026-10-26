@@ -80,7 +80,7 @@ def _write_prompt_file(path: Path, name: str, documents: list[str], visible: boo
 def _validate_body(body: str):
     if not body.strip():
         raise HTTPException(status_code=400, detail="プロンプト本文は必須です")
-    # 生成・リライト・ニュース検索・+Rレビューは [prompt] 以降だけを使い、無い・空ならエラーになるため保存時に弾く
+    # 生成・リライト・ニュース検索・予約時レビューは [prompt] 以降だけを使い、無い・空ならエラーになるため保存時に弾く
     if not _parse_prompt_text(body, "")["prompt"]:
         raise HTTPException(status_code=400, detail="本文の前に [prompt] の行が必要です（[prompt] の後に本文を書いてください）")
 

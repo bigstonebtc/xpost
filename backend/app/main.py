@@ -53,7 +53,7 @@ def _ensure_posting_settings_schedule_days_column(user_id: str) -> None:
 
 
 def _ensure_review_columns(user_id: str) -> None:
-    """+R（レビューしてから予約）用のカラムを追加する（冪等）。
+    """予約時レビュー用のカラムを追加する（冪等）。
     tweets.original_content: レビュー前の本文 / posting_settings.review_prompt_file: 有効なレビュー用プロンプト"""
     engine = get_engine(user_id)
     with engine.connect() as conn:

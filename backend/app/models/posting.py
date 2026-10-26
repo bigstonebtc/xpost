@@ -11,6 +11,6 @@ class PostingSettings(Base):
     daily_schedule_limit = Column(Integer, default=10, nullable=False)
     schedule_days = Column(Integer, default=10, nullable=False)
     allow_over_140 = Column(Boolean, default=True, nullable=False)
-    # +R で使うレビュー用プロンプトのファイル名。None は「なし」
+    # Schedule 時に使うレビュー用プロンプトのファイル名。None は「なし」（レビューしない）
     review_prompt_file = Column(String(255), nullable=True)
     updated_at = Column(TZDateTime(), onupdate=func.now())

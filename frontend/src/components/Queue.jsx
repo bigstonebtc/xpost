@@ -55,7 +55,7 @@ function hasAttachedNewsUrl(content) {
   return ATTACHED_URL_RE.test(content)
 }
 
-// +R で予約された投稿の本文。元のツイートと比べて追加・変更された箇所を青字にする
+// レビューを経て予約された投稿の本文。元のツイートと比べて追加・変更された箇所を青字にする
 function ReviewedText({ original, content }) {
   return addedSegments(original, content).map((seg, i) =>
     seg.added ? <span key={i} style={s.reviewAdded}>{seg.text}</span> : <span key={i}>{seg.text}</span>
@@ -118,7 +118,7 @@ function ReviewPromptSelector({ reviewPrompt, onChange }) {
   const current = reviewPrompt?.filename || null
   return (
     <div style={s.reviewSelector}>
-      <button style={s.reviewBtn} onClick={handleOpen} title="+R で使うレビュー用プロンプト">
+      <button style={s.reviewBtn} onClick={handleOpen} title="Schedule 時に使うレビュー用プロンプト（なし＝レビューしない）">
         Review: {reviewPrompt?.name || 'なし'}
       </button>
       {open && (
@@ -144,7 +144,7 @@ function ReviewPromptSelector({ reviewPrompt, onChange }) {
   )
 }
 
-function TweetCard({ tweet, reviewEnabled, onRefresh, onUpdateContent }) {
+function TweetCard({ tweet, onRefresh, onUpdateContent }) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(tweet.content)
   const [loading, setLoading] = useState(false)
@@ -206,13 +206,6 @@ function TweetCard({ tweet, reviewEnabled, onRefresh, onUpdateContent }) {
   const handleSchedule = async () => {
     setLoading(true)
     try { await api.schedule(tweet.id); onRefresh() }
-    catch (e) { alert(e.message) }
-    finally { setLoading(false) }
-  }
-
-  const handleReviewSchedule = async () => {
-    setLoading(true)
-    try { await api.reviewSchedule(tweet.id); onRefresh() }
     catch (e) { alert(e.message) }
     finally { setLoading(false) }
   }
@@ -437,9 +430,6 @@ function TweetCard({ tweet, reviewEnabled, onRefresh, onUpdateContent }) {
             <>
               <div style={s.btnRow}>
                 <button style={s.btn('#38a169')} onClick={handleSchedule} disabled={loading}>Schedule</button>
-                {reviewEnabled && (
-                  <button style={s.btn('#38a169')} onClick={handleReviewSchedule} disabled={loading} title="レビューしてから予約（Review & Schedule）">+R</button>
-                )}
                 <button style={s.btn('#2b6cb0')} onClick={handlePost} disabled={loading}>Post now</button>
                 {imagePreviewUrl ? (
                   <>
@@ -589,7 +579,7 @@ export default function Queue() {
         </div>
       )}
       {tweets.length === 0 && <p style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>キューが空です</p>}
-      {tweets.map(t => <TweetCard key={t.id} tweet={t} reviewEnabled={!!reviewPrompt} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
+      {tweets.map(t => <TweetCard key={t.id} tweet={t} onRefresh={load} onUpdateContent={handleUpdateContent} />)}
     </div>
   )
 }

@@ -36,5 +36,5 @@ class Tweet(Base):
     # --- 生成時に使用したtopic/type（プロンプトに{topic}/{type}が含まれる場合のみ記録） ---
     used_topic = Column(Text, nullable=True)
     used_type = Column(Text, nullable=True)
-    # --- +R（レビューしてから予約）で書き換える前の本文。+Rで予約されたときだけ値を持つ ---
+    # --- 予約時レビューで書き換える前の本文。レビュー付きで予約されたときだけ値を持つ ---
     original_content = Column(String(1024), nullable=True)

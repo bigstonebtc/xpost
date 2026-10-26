@@ -36,7 +36,7 @@ def get_posting_settings(db: Session = Depends(get_db), user: str = Depends(get_
         "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
         "schedule_days": ps.schedule_days if ps else 10,
         "allow_over_140": ps.allow_over_140 if ps else True,
-        # 有効なレビュー用プロンプト（+R用）。未設定・ファイル削除済みなら None（=「なし」）
+        # 有効なレビュー用プロンプト（Schedule 時のレビュー用）。未設定・ファイル削除済みなら None（=「なし」）
         "review_prompt": get_review_prompt(user, ps.review_prompt_file if ps else None),
         "posting_mode": posting_mode.get_mode(user),
         "default_mode": posting_mode.get_default_mode(user),

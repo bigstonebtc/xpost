@@ -15,7 +15,7 @@ from app.models.tweet import Tweet, TweetStatus
 from app.models.posting import PostingSettings
 from app.routers.tweets import _ATTACHED_URL_RE
 from app.services.poster import post_tweet_with_retry
-from app.services.review import ReviewError, review_tweet
+from app.services.review import ReviewError, get_review_prompt, review_tweet
 from app.services.scheduler import schedule_tweet
 from app.services.scheduling import DEFAULT_SCHEDULE_DAYS, pick_weighted_day, schedule_one
 from app.utils.rate_limit import RateLimitExceeded, format_message
@@ -210,13 +210,18 @@ def reschedule_tweet(tweet_id: int, db: Session = Depends(get_db), user: str = D
 
 @router.post("/{tweet_id}/schedule")
 def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    """未予約の投稿を予約する。有効なレビュー用プロンプトが選ばれていれば（Review: なし 以外）
+    レビューしてから予約し、「なし」ならそのまま予約する。"""
     tweet = db.query(Tweet).filter(Tweet.id == tweet_id, Tweet.status == TweetStatus.queued).first()
     if not tweet:
         raise HTTPException(status_code=404, detail="ツイートが見つかりません")
 
+    ps = db.query(PostingSettings).first()
+    if get_review_prompt(user, ps.review_prompt_file if ps else None):
+        return _review_and_schedule(tweet_id, db, user)
+
     _check_char_limit(tweet, db)
 
-    ps = db.query(PostingSettings).first()
     schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
     daily_limit = ps.daily_schedule_limit if ps else 10
 
@@ -226,7 +231,7 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str 
 
     tweet.status = TweetStatus.scheduled
     tweet.scheduled_at = scheduled_at
-    # 以前 +R で予約→unschedule された投稿の場合に、元のツイート欄・青字表示が残らないようにする
+    # 以前レビュー付きで予約→unschedule された投稿の場合に、元のツイート欄・青字表示が残らないようにする
     tweet.original_content = None
     db.commit()
     schedule_tweet(user, tweet_id, scheduled_at)
@@ -234,9 +239,8 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str 
     return {"scheduled_at": scheduled_at}
 
 
-@router.post("/{tweet_id}/review-schedule")
-def review_and_schedule(tweet_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    """+R：有効なレビュー用プロンプトで本文をレビューし、修正後の本文に置き換えて予約する。
+def _review_and_schedule(tweet_id: int, db: Session, user: str):
+    """有効なレビュー用プロンプトで本文をレビューし、修正後の本文に置き換えて予約する。
     予約時刻の決め方は通常の Schedule と同じ。レビューに失敗した場合は予約せず、
     投稿は未予約のまま残す。本文末尾のニュースURLはレビュー対象外とし、そのまま引き継ぐ。"""
     logger = get_logger(user, "posting")

@@ -13,7 +13,7 @@ from app.user_registry import get_user_config
 from app.utils.rate_limit import RateLimitExceeded, check_and_record
 
 
-# ツイート生成・リライト・+Rレビューで共通に使うモデル
+# ツイート生成・リライト・予約時レビューで共通に使うモデル
 GENERATION_MODEL = "claude-opus-4-7"
 
 _FALLBACK_PROMPT = "あなたはXアカウントの運用担当です。140文字以内のツイートを1件生成してください。JSON配列で返答。例: [\"ツイート本文\"]"
