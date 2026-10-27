@@ -49,6 +49,20 @@ const s = {
   reviewMenuItem: (active) => ({ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: active ? '#ebf4ff' : '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: active ? 'bold' : 'normal' }),
 }
 
+// 未予約カードのボタン列（最大8個）を、スマホ幅でも1行に収めて discard を常に右端に置くための縮小スタイル。
+// インラインスタイルはメディアクエリを書けないため、この列にだけクラスを付けて !important で上書きする。
+// 幅に余裕のある画面（PC等）では従来どおりの見た目のまま。
+const COMPACT_ACTIONS_CSS = `
+@media (max-width: 600px) {
+  .queue-actions { flex-wrap: nowrap !important; gap: 3px !important; }
+  .queue-actions > button { flex: 1 1 auto; padding: 6px 4px !important; font-size: 12px !important; white-space: nowrap; }
+}
+@media (max-width: 400px) {
+  .queue-actions { gap: 2px !important; }
+  .queue-actions > button { padding: 6px 3px !important; font-size: 11px !important; }
+}
+`
+
 const ATTACHED_URL_RE = /(?:^|\n)(https?:\/\/\S+)\s*$/
 
 function hasAttachedNewsUrl(content) {
@@ -441,7 +455,7 @@ function TweetCard({ tweet, reviewActive, onRefresh, onUpdateContent }) {
             </>
           ) : (
             <>
-              <div style={s.btnRow}>
+              <div style={s.btnRow} className="queue-actions">
                 <button
                   style={{ ...s.btn('#38a169'), cursor: scheduling ? 'progress' : 'pointer' }}
                   onClick={handleSchedule}
@@ -580,6 +594,7 @@ export default function Queue() {
 
   return (
     <div>
+      <style>{COMPACT_ACTIONS_CSS}</style>
       <div style={s.topBar}>
         <h2 style={{ fontSize: '18px' }}>キュー（{tweets.length}件）</h2>
         <div style={s.btnRow}>
