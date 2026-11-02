@@ -19,7 +19,7 @@ SCHEDULE_DAYS_MAX = 14
 DEFAULT_SCHEDULE_DAYS = 10
 
 _DAY_START_HOUR = 7
-_DAY_END_HOUR = 21
+_DAY_END_HOUR = 20  # この時刻の直前（19:59）までに予約する
 
 
 def daily_limit_for(day: date, weekday_limit: int) -> int:
@@ -30,7 +30,7 @@ def daily_limit_for(day: date, weekday_limit: int) -> int:
 
 
 def random_time_in_day(day: date) -> datetime:
-    """指定したJST暦日の7:00〜21:00の範囲で完全ランダムな時刻を返す（UTC aware）。"""
+    """指定したJST暦日の7:00〜19:59の範囲で、1分単位の完全ランダムな時刻を返す（UTC aware）。"""
     start = datetime(day.year, day.month, day.day, _DAY_START_HOUR, 0, tzinfo=JST)
     window_minutes = (_DAY_END_HOUR - _DAY_START_HOUR) * 60
     offset_minutes = random.randint(0, window_minutes - 1)

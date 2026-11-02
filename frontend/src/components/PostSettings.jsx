@@ -284,7 +284,7 @@ export default function PostSettings() {
             <span style={{ fontSize: '13px', color: '#555' }}>日間（今日を含む）にランダム投稿</span>
           </div>
           <p style={styles.note}>
-            明日から{SCHEDULE_DAYS_MIN - 1}〜{SCHEDULE_DAYS_MAX - 1}日間の範囲で、日中（JST 7:00〜21:00）のランダムなタイミングに投稿します。今日には予約されません。日ごとの件数は空き枠に応じて自動的に平準化されます（土日は上限が少なくなります）。
+            明日から{SCHEDULE_DAYS_MIN - 1}〜{SCHEDULE_DAYS_MAX - 1}日間の範囲で、日中（JST 7:00〜19:59）のランダムなタイミングに投稿します。今日には予約されません。日ごとの件数は空き枠に応じて自動的に平準化されます（土日は上限が少なくなります）。
           </p>
         </div>
         <button style={styles.saveBtn} onClick={save} disabled={saving}>
