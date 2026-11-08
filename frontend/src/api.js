@@ -141,6 +141,9 @@ export const api = {
   generateWithPrompt: (prompt_file) => request('POST', '/tweets/generate', { prompt_file }),
   // リライト
   rewrite: (text, prompt_id) => request('POST', '/revision/rewrite', { text, prompt_id }),
+  // バージョン・更新履歴
+  version: () => request('GET', '/version/'),
+  versionHistory: () => request('GET', '/version/history'),
   // Claude API 利用統計・料金設定
   claudeStats: () => request('GET', '/claude/stats'),
   getClaudePricing: () => request('GET', '/claude/pricing'),

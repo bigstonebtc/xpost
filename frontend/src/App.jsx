@@ -13,6 +13,7 @@ import NewsSettings from './components/NewsSettings'
 import ApiKeySettings from './components/ApiKeySettings'
 import PostSettings from './components/PostSettings'
 import ClaudeSettings from './components/ClaudeSettings'
+import VersionInfo, { formatVersion } from './components/VersionInfo'
 
 const styles = {
   nav: { background: '#1a1a2e', color: '#fff', padding: '12px 16px', display: 'flex', gap: '20px', alignItems: 'center' },
@@ -20,6 +21,7 @@ const styles = {
   navLink: { color: '#aaa', textDecoration: 'none', fontSize: '14px', padding: '4px 8px', borderRadius: '4px' },
   navLinkActive: { color: '#fff', background: '#16213e' },
   container: { maxWidth: '600px', margin: '0 auto', padding: '16px' },
+  footer: { textAlign: 'center', fontSize: '11px', color: '#aaa', padding: '8px 16px 24px' },
   loginBox: { maxWidth: '320px', margin: '80px auto', padding: '32px', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' },
   input: { width: '100%', padding: '10px', marginBottom: '12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '16px' },
   btn: { width: '100%', padding: '10px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '16px', cursor: 'pointer' },
@@ -88,6 +90,9 @@ function SettingsLayout({ legacyNewsEnabled }) {
         <NavLink to="/settings/claude" style={{ textDecoration: 'none' }}>
           {({ isActive }) => <button style={tabStyle(isActive)}>課金統計</button>}
         </NavLink>
+        <NavLink to="/settings/ver" style={{ textDecoration: 'none' }}>
+          {({ isActive }) => <button style={tabStyle(isActive)}>ver</button>}
+        </NavLink>
       </div>
       <div style={{ paddingTop: '16px' }}>
         <Routes>
@@ -95,6 +100,7 @@ function SettingsLayout({ legacyNewsEnabled }) {
           {legacyNewsEnabled && <Route path="news" element={<NewsSettings />} />}
           <Route path="api" element={<ApiKeySettings />} />
           <Route path="claude" element={<ClaudeSettings />} />
+          <Route path="ver" element={<VersionInfo />} />
         </Routes>
       </div>
     </div>
@@ -104,10 +110,12 @@ function SettingsLayout({ legacyNewsEnabled }) {
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
   const [legacyNewsEnabled, setLegacyNewsEnabled] = useState(false)
+  const [version, setVersion] = useState(null)
 
   useEffect(() => {
     if (!authed) return
     api.features().then(f => setLegacyNewsEnabled(!!f.legacy_news_enabled)).catch(() => {})
+    api.version().then(setVersion).catch(() => {})
   }, [authed])
 
   if (!authed) {
@@ -143,6 +151,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/queue" />} />
         </Routes>
       </div>
+      {version?.version && <footer style={styles.footer}>xpost {formatVersion(version)}</footer>}
     </BrowserRouter>
   )
 }

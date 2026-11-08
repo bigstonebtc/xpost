@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, get_engine, session_for
-from app.logger import system_logger
+from app.logger import get_logger, system_logger
 from app.services.image_cleanup import cleanup_orphaned_images
 from app.routers import auth, tweets, queue, history
 from app.routers import news as news_router
@@ -19,6 +19,8 @@ from app.routers import tor as tor_router
 from app.routers import revision as revision_router
 from app.routers import claude_usage as claude_usage_router
 from app.routers import fixed_tweets as fixed_tweets_router
+from app.routers import version as version_router
+from app.services.version import version_label
 from app.user_registry import load_all_users, users_config
 
 # モデルを全てインポートしてcreate_allに認識させる
@@ -196,11 +198,15 @@ def _init_user(user_id: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    version = version_label()
+    system_logger.info(f"xpost v{version} 起動")
     loaded = load_all_users()
     system_logger.info(f"読み込んだユーザー: {loaded or '(なし)'}")
 
     for user_id in loaded:
         try:
+            # 各ユーザーの app.log にも起動時のバージョンを残す
+            get_logger(user_id).info(f"xpost v{version} 起動")
             _init_user(user_id)
         except Exception as e:
             system_logger.error(f"user={user_id} の初期化に失敗しました（このユーザーは利用不可）: {e}")
@@ -238,6 +244,7 @@ app.include_router(tor_router.router)
 app.include_router(revision_router.router)
 app.include_router(claude_usage_router.router)
 app.include_router(fixed_tweets_router.router)
+app.include_router(version_router.router)
 
 
 @app.get("/health")
