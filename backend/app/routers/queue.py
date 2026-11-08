@@ -17,7 +17,7 @@ from app.routers.tweets import _ATTACHED_URL_RE
 from app.services.poster import post_tweet_with_retry
 from app.services.review import ReviewError, get_review_prompt, review_tweet
 from app.services.scheduler import schedule_tweet
-from app.services.scheduling import DEFAULT_SCHEDULE_DAYS, pick_weighted_day, schedule_one
+from app.services.scheduling import DEFAULT_SCHEDULE_DAYS_AHEAD, pick_weighted_day, schedule_one
 from app.utils.rate_limit import RateLimitExceeded, format_message
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -74,12 +74,12 @@ def reschedule_all(db: Session = Depends(get_db), user: str = Depends(get_curren
     db.commit()
 
     ps = db.query(PostingSettings).first()
-    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
+    days_ahead = ps.schedule_days_ahead if ps else DEFAULT_SCHEDULE_DAYS_AHEAD
     daily_limit = ps.daily_schedule_limit if ps else 10
 
     rescheduled = 0
     for tweet in tweets:
-        scheduled_at = schedule_one(schedule_days, daily_limit, db)
+        scheduled_at = schedule_one(days_ahead, daily_limit, db)
         if scheduled_at is None:
             # これ以上空き枠がない。以降の投稿も結果は同じなので打ち切り、未スケジュールのまま残す
             break
@@ -222,10 +222,10 @@ def schedule_tweet_post(tweet_id: int, db: Session = Depends(get_db), user: str 
 
     _check_char_limit(tweet, db)
 
-    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
+    days_ahead = ps.schedule_days_ahead if ps else DEFAULT_SCHEDULE_DAYS_AHEAD
     daily_limit = ps.daily_schedule_limit if ps else 10
 
-    scheduled_at = schedule_one(schedule_days, daily_limit, db)
+    scheduled_at = schedule_one(days_ahead, daily_limit, db)
     if scheduled_at is None:
         raise HTTPException(status_code=400, detail="予約範囲内に空き枠がありません")
 
@@ -257,11 +257,11 @@ def _review_and_schedule(tweet_id: int, db: Session, user: str):
     prompt_file = ps.review_prompt_file if ps else None
     if not prompt_file:
         fail(400, "レビュー用プロンプトが設定されていません")
-    schedule_days = ps.schedule_days if ps else DEFAULT_SCHEDULE_DAYS
+    days_ahead = ps.schedule_days_ahead if ps else DEFAULT_SCHEDULE_DAYS_AHEAD
     daily_limit = ps.daily_schedule_limit if ps else 10
 
     # 空き枠が無ければ、APIを呼ぶ前に打ち切る（結果を予約できず料金だけかかるのを防ぐ）
-    if pick_weighted_day(schedule_days, daily_limit, db) is None:
+    if pick_weighted_day(days_ahead, daily_limit, db) is None:
         fail(400, "予約範囲内に空き枠がありません")
 
     original = tweet.content
@@ -296,7 +296,7 @@ def _review_and_schedule(tweet_id: int, db: Session, user: str):
     if tweet.status != TweetStatus.queued or tweet.content != original:
         fail(409, "レビュー中に投稿が変更されたため予約しませんでした")
 
-    scheduled_at = schedule_one(schedule_days, daily_limit, db)
+    scheduled_at = schedule_one(days_ahead, daily_limit, db)
     if scheduled_at is None:
         fail(400, "予約範囲内に空き枠がありません")
 

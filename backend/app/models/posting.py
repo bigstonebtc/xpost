@@ -9,7 +9,10 @@ class PostingSettings(Base):
 
     id = Column(Integer, primary_key=True)
     daily_schedule_limit = Column(Integer, default=10, nullable=False)
+    # 旧：今日を含めた日数。schedule_days_ahead へ移行済みで、アプリからは参照しない（SQLiteで列削除を避けるため残す）
     schedule_days = Column(Integer, default=10, nullable=False)
+    # 予約範囲：明日から何日間か（今日は含まない）
+    schedule_days_ahead = Column(Integer, default=9, nullable=False)
     allow_over_140 = Column(Boolean, default=True, nullable=False)
     # Schedule 時に使うレビュー用プロンプトのファイル名。None は「なし」（レビューしない）
     review_prompt_file = Column(String(255), nullable=True)

@@ -54,6 +54,19 @@ def _ensure_posting_settings_schedule_days_column(user_id: str) -> None:
         conn.commit()
 
 
+def _ensure_posting_settings_schedule_days_ahead_column(user_id: str) -> None:
+    """予約範囲の表し方を「今日を含めてN日」(schedule_days)から「明日からN日間」
+    (schedule_days_ahead)に移行する（冪等）。列が無い場合のみ追加し、既存行は
+    schedule_days - 1 で初期化する（実際に予約される範囲は変わらない）。"""
+    engine = get_engine(user_id)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(posting_settings)").fetchall()}
+        if "schedule_days_ahead" not in cols:
+            conn.exec_driver_sql("ALTER TABLE posting_settings ADD COLUMN schedule_days_ahead INTEGER NOT NULL DEFAULT 9")
+            conn.exec_driver_sql("UPDATE posting_settings SET schedule_days_ahead = schedule_days - 1")
+        conn.commit()
+
+
 def _ensure_review_columns(user_id: str) -> None:
     """予約時レビュー用のカラムを追加する（冪等）。
     tweets.original_content: レビュー前の本文 / posting_settings.review_prompt_file: 有効なレビュー用プロンプト"""
@@ -181,6 +194,7 @@ def _init_user(user_id: str) -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_tweet_topic_type_columns(user_id)
     _ensure_posting_settings_schedule_days_column(user_id)
+    _ensure_posting_settings_schedule_days_ahead_column(user_id)
     _ensure_review_columns(user_id)
 
     _seed_news_data(user_id)

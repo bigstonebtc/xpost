@@ -8,7 +8,7 @@ from app.logger import get_logger
 from app.models.posting import PostingSettings
 from app.services import posting_mode
 from app.services.review import get_review_prompt
-from app.services.scheduling import SCHEDULE_DAYS_MAX, SCHEDULE_DAYS_MIN
+from app.services.scheduling import DEFAULT_SCHEDULE_DAYS_AHEAD, SCHEDULE_DAYS_AHEAD_MAX, SCHEDULE_DAYS_AHEAD_MIN
 
 router = APIRouter(prefix="/settings/posting", tags=["posting"])
 
@@ -17,8 +17,9 @@ class PostingSettingsUpdate(BaseModel):
     daily_schedule_limit: int
 
 
-class ScheduleDaysUpdate(BaseModel):
-    schedule_days: int
+class ScheduleDaysAheadUpdate(BaseModel):
+    # 明日から何日間か（今日は含まない）
+    schedule_days_ahead: int
 
 
 class AllowOver140Update(BaseModel):
@@ -34,7 +35,7 @@ def get_posting_settings(db: Session = Depends(get_db), user: str = Depends(get_
     ps = db.query(PostingSettings).first()
     return {
         "daily_schedule_limit": ps.daily_schedule_limit if ps else 10,
-        "schedule_days": ps.schedule_days if ps else 10,
+        "schedule_days_ahead": ps.schedule_days_ahead if ps else DEFAULT_SCHEDULE_DAYS_AHEAD,
         "allow_over_140": ps.allow_over_140 if ps else True,
         # 有効なレビュー用プロンプト（Schedule 時のレビュー用）。未設定・ファイル削除済みなら None（=「なし」）
         "review_prompt": get_review_prompt(user, ps.review_prompt_file if ps else None),
@@ -56,14 +57,17 @@ def update_posting_settings(body: PostingSettingsUpdate, db: Session = Depends(g
     return {"ok": True}
 
 
-@router.put("/schedule-days")
-def update_schedule_days(body: ScheduleDaysUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    if not (SCHEDULE_DAYS_MIN <= body.schedule_days <= SCHEDULE_DAYS_MAX):
-        raise HTTPException(status_code=400, detail=f"schedule_days は{SCHEDULE_DAYS_MIN}〜{SCHEDULE_DAYS_MAX}の整数で指定してください")
+@router.put("/schedule-days-ahead")
+def update_schedule_days_ahead(body: ScheduleDaysAheadUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    if not (SCHEDULE_DAYS_AHEAD_MIN <= body.schedule_days_ahead <= SCHEDULE_DAYS_AHEAD_MAX):
+        raise HTTPException(
+            status_code=400,
+            detail=f"予約範囲は明日から{SCHEDULE_DAYS_AHEAD_MIN}〜{SCHEDULE_DAYS_AHEAD_MAX}日間で指定してください",
+        )
     ps = db.query(PostingSettings).first()
     if not ps:
         raise HTTPException(status_code=404, detail="設定が見つかりません")
-    ps.schedule_days = body.schedule_days
+    ps.schedule_days_ahead = body.schedule_days_ahead
     db.commit()
     return {"ok": True}
 

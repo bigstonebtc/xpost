@@ -14,9 +14,10 @@ from app.models.tweet import Tweet, TweetStatus
 JST = ZoneInfo("Asia/Tokyo")
 
 WEEKEND_LIMIT_REDUCTION = 3
-SCHEDULE_DAYS_MIN = 5
-SCHEDULE_DAYS_MAX = 14
-DEFAULT_SCHEDULE_DAYS = 10
+# 予約範囲：明日から何日間か（今日は含まない）
+SCHEDULE_DAYS_AHEAD_MIN = 4
+SCHEDULE_DAYS_AHEAD_MAX = 13
+DEFAULT_SCHEDULE_DAYS_AHEAD = 9
 
 _DAY_START_HOUR = 7
 _DAY_END_HOUR = 20  # この時刻の直前（19:59）までに予約する
@@ -47,13 +48,13 @@ def _scheduled_count_on(day: date, db: Session) -> int:
     ).count()
 
 
-def pick_weighted_day(schedule_days: int, weekday_limit: int, db: Session) -> date | None:
-    """予約対象日（明日から schedule_days-1 日間）の中から、空き枠を重みとして1日を抽選する。
+def pick_weighted_day(days_ahead: int, weekday_limit: int, db: Session) -> date | None:
+    """予約対象日（明日から days_ahead 日間）の中から、空き枠を重みとして1日を抽選する。
     空き枠が1件もない場合は None を返す（今日は対象に含めない）。"""
     today = datetime.now(JST).date()
     candidates = []
     weights = []
-    for i in range(1, schedule_days):
+    for i in range(1, days_ahead + 1):
         day = today + timedelta(days=i)
         limit = daily_limit_for(day, weekday_limit)
         available = limit - _scheduled_count_on(day, db)
@@ -66,9 +67,9 @@ def pick_weighted_day(schedule_days: int, weekday_limit: int, db: Session) -> da
     return random.choices(candidates, weights=weights, k=1)[0]
 
 
-def schedule_one(schedule_days: int, weekday_limit: int, db: Session) -> datetime | None:
+def schedule_one(days_ahead: int, weekday_limit: int, db: Session) -> datetime | None:
     """新規に1件分の予約日時を決める。割り当て可能な空き枠が無い場合は None を返す。"""
-    day = pick_weighted_day(schedule_days, weekday_limit, db)
+    day = pick_weighted_day(days_ahead, weekday_limit, db)
     if day is None:
         return None
     return random_time_in_day(day)

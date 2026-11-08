@@ -21,15 +21,16 @@ const styles = {
   warnBadge: { color: '#dd8800', fontWeight: 'bold' },
 }
 
-const SCHEDULE_DAYS_MIN = 5
-const SCHEDULE_DAYS_MAX = 14
-const SCHEDULE_DAYS_OPTIONS = Array.from(
-  { length: SCHEDULE_DAYS_MAX - SCHEDULE_DAYS_MIN + 1 },
-  (_, i) => SCHEDULE_DAYS_MIN + i
+// 予約範囲：明日から何日間か（今日は含まない）
+const SCHEDULE_DAYS_AHEAD_MIN = 4
+const SCHEDULE_DAYS_AHEAD_MAX = 13
+const SCHEDULE_DAYS_AHEAD_OPTIONS = Array.from(
+  { length: SCHEDULE_DAYS_AHEAD_MAX - SCHEDULE_DAYS_AHEAD_MIN + 1 },
+  (_, i) => SCHEDULE_DAYS_AHEAD_MIN + i
 )
 
 export default function PostSettings() {
-  const [scheduleDays, setScheduleDays] = useState(10)
+  const [scheduleDaysAhead, setScheduleDaysAhead] = useState(9)
   const [dailyLimit, setDailyLimit] = useState(10)
   const [allowOver140, setAllowOver140] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -55,7 +56,7 @@ export default function PostSettings() {
     try {
       const postingData = await api.getPostingSettings()
       setDailyLimit(postingData.daily_schedule_limit ?? 10)
-      setScheduleDays(postingData.schedule_days ?? 10)
+      setScheduleDaysAhead(postingData.schedule_days_ahead ?? 9)
       setAllowOver140(postingData.allow_over_140 ?? true)
       setPostingMode(postingData.posting_mode || 'tor')
       setDefaultMode(postingData.default_mode || 'tor')
@@ -159,14 +160,14 @@ export default function PostSettings() {
   }
 
   const save = async () => {
-    const val = Number(scheduleDays)
-    if (!Number.isInteger(val) || val < SCHEDULE_DAYS_MIN || val > SCHEDULE_DAYS_MAX) {
-      flash('err', `${SCHEDULE_DAYS_MIN}〜${SCHEDULE_DAYS_MAX}の整数で指定してください`)
+    const val = Number(scheduleDaysAhead)
+    if (!Number.isInteger(val) || val < SCHEDULE_DAYS_AHEAD_MIN || val > SCHEDULE_DAYS_AHEAD_MAX) {
+      flash('err', `${SCHEDULE_DAYS_AHEAD_MIN}〜${SCHEDULE_DAYS_AHEAD_MAX}の整数で指定してください`)
       return
     }
     setSaving(true)
     try {
-      await api.updateScheduleDays(val)
+      await api.updateScheduleDaysAhead(val)
       flash('ok', '保存しました')
     } catch (e) {
       flash('err', e.message)
@@ -272,19 +273,20 @@ export default function PostSettings() {
         <div style={{ padding: '12px 0' }}>
           <div style={{ fontSize: '14px', marginBottom: '10px', fontWeight: '500' }}>予約範囲</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '13px', color: '#555' }}>明日から</span>
             <select
-              value={scheduleDays}
-              onChange={e => setScheduleDays(e.target.value)}
+              value={scheduleDaysAhead}
+              onChange={e => setScheduleDaysAhead(e.target.value)}
               style={{ padding: '7px 10px', border: '1px solid #aaa', borderRadius: '4px', fontSize: '14px' }}
             >
-              {SCHEDULE_DAYS_OPTIONS.map(n => (
+              {SCHEDULE_DAYS_AHEAD_OPTIONS.map(n => (
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
-            <span style={{ fontSize: '13px', color: '#555' }}>日間（今日を含む）にランダム投稿</span>
+            <span style={{ fontSize: '13px', color: '#555' }}>日間にランダム投稿（今日は含まない）</span>
           </div>
           <p style={styles.note}>
-            明日から{SCHEDULE_DAYS_MIN - 1}〜{SCHEDULE_DAYS_MAX - 1}日間の範囲で、日中（JST 7:00〜19:59）のランダムなタイミングに投稿します。今日には予約されません。日ごとの件数は空き枠に応じて自動的に平準化されます（土日は上限が少なくなります）。
+            明日から{SCHEDULE_DAYS_AHEAD_MIN}〜{SCHEDULE_DAYS_AHEAD_MAX}日間の範囲で選べます。選んだ日数の間の、日中（JST 7:00〜19:59）のランダムなタイミングに投稿します（例：「明日から 3 日間」なら明日・明後日・3日後）。今日には予約されません。日ごとの件数は空き枠に応じて自動的に平準化されます（土日は上限が少なくなります）。
           </p>
         </div>
         <button style={styles.saveBtn} onClick={save} disabled={saving}>

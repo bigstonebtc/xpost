@@ -551,7 +551,7 @@ function TweetCard({ tweet, reviewActive, onRefresh, onUpdateContent }) {
 export default function Queue() {
   const [tweets, setTweets] = useState([])
   const [loading, setLoading] = useState(false)
-  const [scheduleDays, setScheduleDays] = useState(null)
+  const [scheduleDaysAhead, setScheduleDaysAhead] = useState(null)
   const [reviewPrompt, setReviewPrompt] = useState(null)
   const [rescheduling, setRescheduling] = useState(false)
 
@@ -560,7 +560,7 @@ export default function Queue() {
   useEffect(() => { load() }, [])
   useEffect(() => {
     api.getPostingSettings().then(s => {
-      setScheduleDays(s.schedule_days)
+      setScheduleDaysAhead(s.schedule_days_ahead)
       setReviewPrompt(s.review_prompt)
     }).catch(() => {})
   }, [])
@@ -606,9 +606,9 @@ export default function Queue() {
           {unscheduledCount > 0 && <button style={s.clearBtn} onClick={handleClear}>Delete unscheduled</button>}
         </div>
       </div>
-      {scheduleDays != null && (
+      {scheduleDaysAhead != null && (
         <div style={s.modeRow}>
-          <p style={{ ...s.modeInfo, marginBottom: 0 }}>現在の投稿モード：明日から{scheduleDays - 1}日間にランダムに投稿</p>
+          <p style={{ ...s.modeInfo, marginBottom: 0 }}>現在の投稿モード：明日から{scheduleDaysAhead}日間にランダムに投稿</p>
           <ReviewPromptSelector reviewPrompt={reviewPrompt} onChange={setReviewPrompt} />
         </div>
       )}
