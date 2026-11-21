@@ -1,6 +1,7 @@
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, get_engine, session_for
@@ -230,6 +231,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="xpost API", lifespan=lifespan)
+
+# この時間以上かかったAPIリクエストをシステムログ（docker compose logs backend）に記録する。
+# 動作が遅いときに、どのAPIが遅いのか（サーバー側か画面側か）を切り分けるため。
+_SLOW_REQUEST_SECONDS = 1.0
+
+
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    started_at = time.monotonic()
+    response = await call_next(request)
+    elapsed = time.monotonic() - started_at
+    if elapsed >= _SLOW_REQUEST_SECONDS:
+        system_logger.warning(f"slow request: {request.method} {request.url.path} {response.status_code} {elapsed:.1f}s")
+    return response
 
 app.add_middleware(
     CORSMiddleware,

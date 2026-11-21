@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { api } from '../api'
 import { toJstDate, formatJst } from '../utils/jst'
 import { addedSegments } from '../utils/diff'
@@ -71,7 +71,9 @@ function hasAttachedNewsUrl(content) {
 
 // レビューを経て予約された投稿の本文。元のツイートと比べて追加・変更された箇所を青字にする
 function ReviewedText({ original, content }) {
-  return addedSegments(original, content).map((seg, i) =>
+  // 差分計算（文字単位LCS）はカードの再描画のたびに走らせない。本文が変わったときだけ計算し直す
+  const segments = useMemo(() => addedSegments(original, content), [original, content])
+  return segments.map((seg, i) =>
     seg.added ? <span key={i} style={s.reviewAdded}>{seg.text}</span> : <span key={i}>{seg.text}</span>
   )
 }
@@ -416,6 +418,9 @@ function TweetCard({ tweet, reviewActive, onRefresh, onUpdateContent }) {
             <img
               src={imagePreviewUrl}
               alt="添付画像"
+              // 添付画像は原寸（最大5MB）なので、画面に近づいたカードの分だけ読み込む
+              loading="lazy"
+              decoding="async"
               style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '8px' }}
             />
           )}
