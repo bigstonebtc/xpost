@@ -32,6 +32,10 @@ X APIキー・Anthropic APIキーを設定してください。
 docker compose up -d --build
 ```
 
+本番サーバー上ではこのコマンドを実行しないこと。本番は `-p xpost_prod` で動かしており、
+`-p` を付けずに実行するとフォルダ名（`xpost`）の別のコンテナ一式が起動し、本番と同じ
+ユーザーデータ（DB・予約）を二重に扱ってしまう。本番の更新は `scripts/update_prod.sh` を使う。
+
 ## Environment Variables
 
 各ユーザーの `/home/<user>/xpost/conf/env.conf` に設定する。テンプレートは

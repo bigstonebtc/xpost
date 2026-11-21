@@ -18,6 +18,9 @@ fi
 
 SRC_DIR="${XPOST_SRC_DIR:-$HOME/xpost}"
 DEST_DIR="${XPOST_DEST_DIR:-/app/xpost}"
+# 本番の Compose プロジェクト名（update_prod.sh と同じ）。-p を省くとフォルダ名（xpost）が
+# プロジェクト名になり、本番とは別のコンテナ一式が二重に起動してしまうため必ず指定する。
+PROJECT_NAME="${XPOST_COMPOSE_PROJECT:-xpost_prod}"
 
 if [ ! -d "$SRC_DIR" ]; then
   echo "デプロイ元が見つかりません: $SRC_DIR" >&2
@@ -39,7 +42,7 @@ rsync -a --delete \
   "$SRC_DIR"/ "$DEST_DIR"/
 
 cd "$DEST_DIR"
-docker compose up -d --build
+docker compose -p "$PROJECT_NAME" up -d --build
 
 echo "─────────────────────────────────"
 echo "デプロイ完了: $DEST_DIR"
