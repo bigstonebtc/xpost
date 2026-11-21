@@ -30,4 +30,4 @@ IPアドレス・ホスト名をハードコードしない。`localhost` / `127
 - タグはローカル管理を正とし、GitHub へは push しない（push できない環境があるため）。
   バージョンの正は `VERSION` ファイルとそのコミット履歴
 - アプリ本体に変更の無い push（CLAUDE.md・README などの文書だけの変更）では番号を上げない
-- デプロイ用スクリプト（deploy-to-prod.sh / update_prod.sh）はバージョン管理に関与させない
+- デプロイ用スクリプト（update_prod.sh）はバージョン管理に関与させない

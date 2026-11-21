@@ -2,22 +2,18 @@
 .env
 .env.local
 .env.*.local
-conf/env.conf
-conf/prompts/relevance.conf
 
 # 素材ドキュメント・仕様書（VPS上のみ保管）
 docs/
-logs/*
-!logs/.gitkeep
 nginx/certs/
 
-# プロンプトファイル（秘匿情報。サーバー上でアプリから随時編集されるためGit管理対象外）
-prompts/*
-!prompts/.gitkeep
-
-# ユーザー個別資料（秘匿情報。サーバー上でユーザーが随時配置するためGit管理対象外）
-documents/*
-!documents/.gitkeep
+# 単一ユーザー時代の設定・ログ・プロンプト・資料の置き場所（秘匿情報を含みうる）。
+# 現在は各ユーザーの /home/<user>/xpost/ を使うためリポジトリ直下には置かないが、
+# サーバー上に残っている場合に誤ってコミットしないよう引き続き除外する
+conf/
+logs/
+prompts/
+documents/
 
 # Pythonキャッシュ
 __pycache__/
