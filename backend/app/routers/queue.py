@@ -170,14 +170,20 @@ def post_tweet_now(tweet_id: int, db: Session = Depends(get_db), user: str = Dep
             )
             return {"ok": True, "x_tweet_id": result.x_tweet_id}
 
-        tweet.status = TweetStatus.failed
+        # Post now はその場で結果を見ているので、失敗しても未予約のまま元の位置に残す
+        # （failed にすると一覧の並びで未予約の後ろへ移り、消えたように見えるため）。
+        # 予約投稿が自動で失敗した場合は scheduler 側で failed にする。
         tweet.error_code = result.error_code
         tweet.error_message = result.error_message
         tweet.retry_attempt = result.retry_attempt
         tweet.posted_via_tor = result.posted_via_tor
-        tweet.failed_at = datetime.now(timezone.utc)
+        if tweet.status == TweetStatus.failed:
+            tweet.failed_at = datetime.now(timezone.utc)
         db.commit()
-        raise HTTPException(status_code=502, detail=f"{result.error_code}: {result.error_message}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"投稿できませんでした（{result.error_code}: {result.error_message}）。投稿はキューに残っています",
+        )
 
     except RateLimitExceeded as e:
         db.rollback()
